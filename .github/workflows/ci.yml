@@ -15,6 +15,15 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Install C++ dependencies
+        run: >-
+          sudo apt-get update &&
+          sudo apt-get install --yes
+          libgrpc++-dev
+          libprotobuf-dev
+          protobuf-compiler
+          protobuf-compiler-grpc
+
       - name: Configure
         run: >-
           cmake -S . -B build
