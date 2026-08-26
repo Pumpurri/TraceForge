@@ -7,9 +7,11 @@ partial writes, and reproducing a recorded session reliably.
 
 ## Status
 
-TraceForge is in its foundation milestone. The repository currently provides a
-strict C++20 build, a minimal command-line executable, a smoke test, and Linux
-continuous integration. Sensor ingestion and recording are not implemented yet.
+TraceForge currently provides a strict C++20 build, a minimal command-line
+executable, Linux continuous integration, and a Flutter feasibility client for
+reading real phone motion and location sensors. Network ingestion and recording
+are not implemented yet. Physical-device results will be documented only after
+the client is run on hardware.
 
 ## Planned capabilities
 
@@ -41,6 +43,16 @@ Run the initial CLI:
 ```sh
 ./build/traceforge --help
 ./build/traceforge --version
+```
+
+The phone client is under `clients/flutter_sensor`:
+
+```sh
+cd clients/flutter_sensor
+flutter pub get
+flutter analyze
+flutter test
+flutter run
 ```
 
 ## Design direction
