@@ -127,6 +127,22 @@ Use `--print-events` to inspect the ordered event stream. Rates, fault counts,
 and the hash are always reported; the hash is for reproducibility checks, not
 cryptographic integrity.
 
+With a collector running, stream the workload over seven concurrent gRPC
+streams—one for each virtual producer:
+
+```sh
+./build/traceforge generate \
+  --seed 42 \
+  --duration-ms 1000 \
+  --target 127.0.0.1:50051
+```
+
+The command reports attempted, written, and collector-accepted counts plus the
+gRPC status for every producer. It exits unsuccessfully if any stream is
+rejected, including intentional validation faults or queue overload. This makes
+the same seeded workload reusable for normal ingestion, reconnect, and
+backpressure tests.
+
 The phone client is under `clients/flutter_sensor`:
 
 ```sh

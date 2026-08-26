@@ -95,6 +95,7 @@ add_library(
     traceforge_core
     src/about.cpp
     src/generator/workload_generator.cpp
+    src/generator/workload_publisher.cpp
     src/telemetry/collector_service.cpp
     src/telemetry/queued_sink.cpp
     src/telemetry/validation.cpp
@@ -191,6 +192,22 @@ if(BUILD_TESTING)
     add_test(
         NAME traceforge.queued_sink
         COMMAND traceforge_queued_sink_test
+    )
+
+    add_executable(
+        traceforge_workload_publisher_integration_test
+        tests/workload_publisher_integration_test.cpp
+    )
+    target_link_libraries(
+        traceforge_workload_publisher_integration_test
+        PRIVATE traceforge::core
+    )
+    traceforge_enable_warnings(
+        traceforge_workload_publisher_integration_test
+    )
+    add_test(
+        NAME traceforge.workload_publisher_integration
+        COMMAND traceforge_workload_publisher_integration_test
     )
 
     add_executable(

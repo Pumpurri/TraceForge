@@ -17,6 +17,7 @@
 
 #include "traceforge/about.hpp"
 #include "traceforge/generator/workload_generator.hpp"
+#include "traceforge/generator/workload_publisher.hpp"
 #include "traceforge/telemetry/collector_service.hpp"
 #include "traceforge/telemetry/queued_sink.hpp"
 #include "traceforge/version.hpp"
@@ -70,6 +71,8 @@ void print_generator_help(std::ostream& output) {
            << "  --drop-per-million N     Event drop probability\n"
            << "  --duplicate-per-million N  Event duplication probability\n"
            << "  --reorder-per-million N  Adjacent-pair reorder probability\n"
+           << "  --target ADDRESS         Stream to a running collector\n"
+           << "  --connect-timeout-ms N   Collector connection timeout\n"
            << "  --print-events           Print the generated event stream\n";
 }
 
@@ -115,6 +118,8 @@ std::uint32_t parse_probability(std::string_view value,
 int run_generator(int argc, char* argv[]) {
     traceforge::generator::GeneratorConfig config;
     bool print_events = false;
+    std::string target;
+    std::chrono::milliseconds connect_timeout{5'000};
 
     try {
         for (int index = 2; index < argc; ++index) {
@@ -159,6 +164,16 @@ int run_generator(int argc, char* argv[]) {
             } else if (option == "--reorder-per-million") {
                 config.faults.reorder_per_million =
                     parse_probability(value, option);
+            } else if (option == "--target") {
+                target = value;
+            } else if (option == "--connect-timeout-ms") {
+                const auto timeout_ms =
+                    parse_integer<std::int64_t>(value, option);
+                if (timeout_ms <= 0 || timeout_ms > 60'000) {
+                    throw std::invalid_argument(
+                        "connect timeout must be between 1 and 60000 ms");
+                }
+                connect_timeout = std::chrono::milliseconds{timeout_ms};
             } else {
                 throw std::invalid_argument("unknown generator option: " +
                                             std::string{option});
@@ -186,6 +201,32 @@ int run_generator(int argc, char* argv[]) {
                   << " reordered_pairs=" << workload.stats.reordered_pairs
                   << " hash="
                   << traceforge::generator::format_hash(workload.hash) << '\n';
+
+        if (!target.empty()) {
+            const traceforge::generator::WorkloadPublisher publisher{{
+                .target = target,
+                .connect_timeout = connect_timeout,
+            }};
+            const auto report = publisher.publish(workload.events);
+            for (const auto& producer : report.producers) {
+                std::cout << "producer=" << producer.producer_id
+                          << " attempted=" << producer.attempted_events
+                          << " written=" << producer.written_events
+                          << " accepted=" << producer.accepted_events
+                          << " gaps=" << producer.sequence_gaps
+                          << " grpc_status=" << producer.grpc_status_code;
+                if (!producer.error_message.empty()) {
+                    std::cout << " error=\"" << producer.error_message << '"';
+                }
+                std::cout << '\n';
+            }
+            std::cout << "publish_target=" << target
+                      << " producers=" << report.producers.size()
+                      << " attempted=" << report.attempted_events()
+                      << " accepted=" << report.accepted_events() << " result="
+                      << (report.succeeded() ? "success" : "failed") << '\n';
+            return report.succeeded() ? 0 : 3;
+        }
         return 0;
     } catch (const std::exception& error) {
         std::cerr << "Generator error: " << error.what() << '\n';
