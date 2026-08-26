@@ -9,10 +9,10 @@ partial writes, and reproducing a recorded session reliably.
 
 TraceForge currently provides a strict C++20 build, Linux continuous
 integration, a versioned Protobuf telemetry contract, an asynchronous C++ gRPC
-collector, a deterministic multi-sensor workload generator, and a Flutter
-client for reading and streaming real phone motion and location sensors.
-Persistent recording is not implemented yet. Physical-device results will be
-documented only after the client is run on hardware.
+collector with bounded ingestion, a deterministic multi-sensor workload
+generator, and a Flutter client for reading and streaming real phone motion and
+location sensors. Persistent recording is not implemented yet. Physical-device
+results will be documented only after the client is run on hardware.
 
 ## Planned capabilities
 
@@ -73,6 +73,32 @@ producer identity, monotonically increasing sequence number, source timestamp,
 explicit clock domain, and typed payload. The collector validates events,
 captures its own arrival timestamp, reports sequence gaps, and returns explicit
 gRPC errors for invalid input or an overloaded sink.
+
+### Bounded ingestion and backpressure
+
+gRPC callback threads never perform consumer work directly. Accepted events
+move into a fixed-capacity FIFO, and one worker drains that queue into the next
+pipeline stage. The queue tracks accepted and rejected events, current depth,
+and its high-water mark.
+
+The overload policy is explicit: TraceForge does not block an asynchronous RPC
+thread and does not silently drop an event. If the queue is full, the affected
+producer stream ends with gRPC `RESOURCE_EXHAUSTED`; other streams remain
+independent. A stopped or failed pipeline returns `UNAVAILABLE`.
+
+Queue capacity is configurable. An artificial consumer delay makes overload
+behavior reproducible during development:
+
+```sh
+./build/traceforge collect \
+  --listen 0.0.0.0:50051 \
+  --queue-capacity 64 \
+  --consumer-delay-us 5000
+```
+
+Automated tests exercise FIFO draining, fixed memory bounds, concurrent queue
+producers, six simultaneous gRPC streams, producer reconnection, and overload
+status propagation.
 
 Generate one simulated second of telemetry and print its reproducibility hash:
 

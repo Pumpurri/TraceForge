@@ -41,9 +41,16 @@ class StreamReactor final : public grpc::ServerReadReactor<v1::TelemetryEvent> {
             .event = std::move(event_),
             .collector_arrival_timestamp_ns = unix_time_ns(),
         };
-        if (sink_.try_accept(std::move(collected)) == SinkResult::overloaded) {
+        switch (sink_.try_accept(std::move(collected))) {
+        case SinkResult::accepted:
+            break;
+        case SinkResult::overloaded:
             Finish({grpc::StatusCode::RESOURCE_EXHAUSTED,
-                    "telemetry sink is overloaded"});
+                    "telemetry queue reached its fixed capacity"});
+            return;
+        case SinkResult::unavailable:
+            Finish({grpc::StatusCode::UNAVAILABLE,
+                    "telemetry ingestion pipeline is unavailable"});
             return;
         }
 
@@ -62,11 +69,12 @@ class StreamReactor final : public grpc::ServerReadReactor<v1::TelemetryEvent> {
 
 }  // namespace
 
-CollectorService::CollectorService(TelemetrySink& sink) noexcept : sink_(sink) {}
+CollectorService::CollectorService(TelemetrySink& sink) noexcept
+    : sink_(sink) {}
 
-grpc::ServerReadReactor<v1::TelemetryEvent>* CollectorService::StreamTelemetry(
-    grpc::CallbackServerContext* context,
-    v1::StreamSummary* response) {
+grpc::ServerReadReactor<v1::TelemetryEvent>*
+CollectorService::StreamTelemetry(grpc::CallbackServerContext* context,
+                                  v1::StreamSummary* response) {
     static_cast<void>(context);
     return new StreamReactor{sink_, *response};
 }

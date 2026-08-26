@@ -16,6 +16,7 @@ struct CollectedEvent {
 enum class SinkResult {
     accepted,
     overloaded,
+    unavailable,
 };
 
 class TelemetrySink {
@@ -28,9 +29,9 @@ class CollectorService final : public v1::TelemetryCollector::CallbackService {
   public:
     explicit CollectorService(TelemetrySink& sink) noexcept;
 
-    grpc::ServerReadReactor<v1::TelemetryEvent>* StreamTelemetry(
-        grpc::CallbackServerContext* context,
-        v1::StreamSummary* response) override;
+    grpc::ServerReadReactor<v1::TelemetryEvent>*
+    StreamTelemetry(grpc::CallbackServerContext* context,
+                    v1::StreamSummary* response) override;
 
   private:
     TelemetrySink& sink_;

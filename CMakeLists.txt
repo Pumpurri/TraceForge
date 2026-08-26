@@ -96,6 +96,7 @@ add_library(
     src/about.cpp
     src/generator/workload_generator.cpp
     src/telemetry/collector_service.cpp
+    src/telemetry/queued_sink.cpp
     src/telemetry/validation.cpp
 )
 add_library(traceforge::core ALIAS traceforge_core)
@@ -162,6 +163,34 @@ if(BUILD_TESTING)
     add_test(
         NAME traceforge.workload_generator
         COMMAND traceforge_workload_generator_test
+    )
+
+    add_executable(
+        traceforge_bounded_queue_test
+        tests/bounded_queue_test.cpp
+    )
+    target_link_libraries(
+        traceforge_bounded_queue_test
+        PRIVATE traceforge::core
+    )
+    traceforge_enable_warnings(traceforge_bounded_queue_test)
+    add_test(
+        NAME traceforge.bounded_queue
+        COMMAND traceforge_bounded_queue_test
+    )
+
+    add_executable(
+        traceforge_queued_sink_test
+        tests/queued_sink_test.cpp
+    )
+    target_link_libraries(
+        traceforge_queued_sink_test
+        PRIVATE traceforge::core
+    )
+    traceforge_enable_warnings(traceforge_queued_sink_test)
+    add_test(
+        NAME traceforge.queued_sink
+        COMMAND traceforge_queued_sink_test
     )
 
     add_executable(

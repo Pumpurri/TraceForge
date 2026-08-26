@@ -10,6 +10,7 @@
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <thread>
 
 #include <grpcpp/server.h>
 #include <grpcpp/server_builder.h>
@@ -17,21 +18,34 @@
 #include "traceforge/about.hpp"
 #include "traceforge/generator/workload_generator.hpp"
 #include "traceforge/telemetry/collector_service.hpp"
+#include "traceforge/telemetry/queued_sink.hpp"
 #include "traceforge/version.hpp"
 
 namespace {
 
-class CountingSink final : public traceforge::telemetry::TelemetrySink {
+class CountingConsumer final : public traceforge::telemetry::TelemetryConsumer {
   public:
-    traceforge::telemetry::SinkResult
-    try_accept(traceforge::telemetry::CollectedEvent event) override {
+    explicit CountingConsumer(std::chrono::microseconds delay)
+        : delay_(delay) {}
+
+    bool consume(traceforge::telemetry::CollectedEvent event) override {
         static_cast<void>(event);
+        if (delay_.count() > 0) {
+            std::this_thread::sleep_for(delay_);
+        }
         accepted_events_.fetch_add(1, std::memory_order_relaxed);
-        return traceforge::telemetry::SinkResult::accepted;
+        return true;
     }
 
   private:
+    std::chrono::microseconds delay_;
     std::atomic<std::uint64_t> accepted_events_{0};
+};
+
+struct CollectorOptions {
+    std::string listen_address{"0.0.0.0:50051"};
+    std::size_t queue_capacity{4'096};
+    std::chrono::microseconds consumer_delay{0};
 };
 
 void print_help(std::ostream& output) {
@@ -40,7 +54,7 @@ void print_help(std::ostream& output) {
            << "Usage:\n"
            << "  traceforge --help       Show this message\n"
            << "  traceforge --version    Show the current version\n"
-           << "  traceforge collect [--listen ADDRESS]\n"
+           << "  traceforge collect [OPTIONS]\n"
            << "                          Run the telemetry collector\n"
            << "  traceforge generate [OPTIONS]\n"
            << "                          Generate deterministic sensor data\n";
@@ -57,6 +71,14 @@ void print_generator_help(std::ostream& output) {
            << "  --duplicate-per-million N  Event duplication probability\n"
            << "  --reorder-per-million N  Adjacent-pair reorder probability\n"
            << "  --print-events           Print the generated event stream\n";
+}
+
+void print_collector_help(std::ostream& output) {
+    output
+        << "Collector options:\n"
+        << "  --listen ADDRESS         Listen address (default 0.0.0.0:50051)\n"
+        << "  --queue-capacity N       Maximum queued events (default 4096)\n"
+        << "  --consumer-delay-us N    Artificial delay for overload testing\n";
 }
 
 template <typename Integer>
@@ -171,26 +193,67 @@ int run_generator(int argc, char* argv[]) {
     }
 }
 
-int run_collector(std::string listen_address) {
-    CountingSink sink;
+int run_collector(int argc, char* argv[]) {
+    CollectorOptions options;
+    try {
+        for (int index = 2; index < argc; ++index) {
+            const std::string_view option{argv[index]};
+            if (option == "--help" || option == "-h") {
+                print_collector_help(std::cout);
+                return 0;
+            }
+
+            const auto value = option_value(index, argc, argv);
+            if (option == "--listen") {
+                options.listen_address = value;
+            } else if (option == "--queue-capacity") {
+                const auto capacity =
+                    parse_integer<std::uint64_t>(value, option);
+                if (capacity == 0 || capacity > 1'000'000) {
+                    throw std::invalid_argument(
+                        "queue capacity must be between 1 and 1000000");
+                }
+                options.queue_capacity = static_cast<std::size_t>(capacity);
+            } else if (option == "--consumer-delay-us") {
+                const auto delay = parse_integer<std::int64_t>(value, option);
+                if (delay < 0 || delay > 10'000'000) {
+                    throw std::invalid_argument(
+                        "consumer delay must be between 0 and 10000000 us");
+                }
+                options.consumer_delay = std::chrono::microseconds{delay};
+            } else {
+                throw std::invalid_argument("unknown collector option: " +
+                                            std::string{option});
+            }
+        }
+    } catch (const std::exception& error) {
+        std::cerr << "Collector error: " << error.what() << '\n';
+        return 2;
+    }
+
+    CountingConsumer consumer{options.consumer_delay};
+    traceforge::telemetry::QueuedTelemetrySink sink{options.queue_capacity,
+                                                    consumer};
     traceforge::telemetry::CollectorService service{sink};
     grpc::ServerBuilder builder;
     int selected_port = 0;
-    builder.AddListeningPort(listen_address, grpc::InsecureServerCredentials(),
-                             &selected_port);
+    builder.AddListeningPort(options.listen_address,
+                             grpc::InsecureServerCredentials(), &selected_port);
     builder.RegisterService(&service);
 
     std::unique_ptr<grpc::Server> server = builder.BuildAndStart();
     if (!server) {
-        std::cerr << "Failed to start collector on " << listen_address << '\n';
+        std::cerr << "Failed to start collector on " << options.listen_address
+                  << '\n';
         return 1;
     }
 
-    std::cout << "TraceForge collector listening on " << listen_address;
-    if (listen_address.ends_with(":0")) {
+    std::cout << "TraceForge collector listening on " << options.listen_address;
+    if (options.listen_address.ends_with(":0")) {
         std::cout << " (selected port " << selected_port << ')';
     }
-    std::cout << '\n';
+    std::cout << "; queue_capacity=" << options.queue_capacity
+              << "; overload_policy=reject_stream\n";
     server->Wait();
     return 0;
 }
@@ -216,15 +279,7 @@ int main(int argc, char* argv[]) {
     }
 
     if (argument == "collect") {
-        std::string listen_address{"0.0.0.0:50051"};
-        if (argc == 4 && std::string_view{argv[2]} == "--listen") {
-            listen_address = argv[3];
-        } else if (argc != 2) {
-            std::cerr << "Invalid collector arguments\n\n";
-            print_help(std::cerr);
-            return 2;
-        }
-        return run_collector(std::move(listen_address));
+        return run_collector(argc, argv);
     }
 
     if (argument == "generate") {
