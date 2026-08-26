@@ -96,6 +96,8 @@ add_library(
     src/about.cpp
     src/generator/workload_generator.cpp
     src/generator/workload_publisher.cpp
+    src/recording/log.cpp
+    src/recording/log_consumer.cpp
     src/telemetry/collector_service.cpp
     src/telemetry/queued_sink.cpp
     src/telemetry/validation.cpp
@@ -208,6 +210,20 @@ if(BUILD_TESTING)
     add_test(
         NAME traceforge.workload_publisher_integration
         COMMAND traceforge_workload_publisher_integration_test
+    )
+
+    add_executable(
+        traceforge_recording_log_test
+        tests/recording_log_test.cpp
+    )
+    target_link_libraries(
+        traceforge_recording_log_test
+        PRIVATE traceforge::core
+    )
+    traceforge_enable_warnings(traceforge_recording_log_test)
+    add_test(
+        NAME traceforge.recording_log
+        COMMAND traceforge_recording_log_test
     )
 
     add_executable(

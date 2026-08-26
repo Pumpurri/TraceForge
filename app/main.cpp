@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cstdint>
 #include <exception>
+#include <filesystem>
 #include <iostream>
 #include <limits>
 #include <memory>
@@ -18,6 +19,8 @@
 #include "traceforge/about.hpp"
 #include "traceforge/generator/workload_generator.hpp"
 #include "traceforge/generator/workload_publisher.hpp"
+#include "traceforge/recording/log.hpp"
+#include "traceforge/recording/log_consumer.hpp"
 #include "traceforge/telemetry/collector_service.hpp"
 #include "traceforge/telemetry/queued_sink.hpp"
 #include "traceforge/version.hpp"
@@ -47,6 +50,8 @@ struct CollectorOptions {
     std::string listen_address{"0.0.0.0:50051"};
     std::size_t queue_capacity{4'096};
     std::chrono::microseconds consumer_delay{0};
+    std::filesystem::path output_path;
+    std::uint64_t flush_every_records{64};
 };
 
 void print_help(std::ostream& output) {
@@ -58,7 +63,9 @@ void print_help(std::ostream& output) {
            << "  traceforge collect [OPTIONS]\n"
            << "                          Run the telemetry collector\n"
            << "  traceforge generate [OPTIONS]\n"
-           << "                          Generate deterministic sensor data\n";
+           << "                          Generate deterministic sensor data\n"
+           << "  traceforge inspect FILE Inspect and validate a telemetry log\n"
+           << "  traceforge recover FILE Remove an incomplete final record\n";
 }
 
 void print_generator_help(std::ostream& output) {
@@ -81,7 +88,9 @@ void print_collector_help(std::ostream& output) {
         << "Collector options:\n"
         << "  --listen ADDRESS         Listen address (default 0.0.0.0:50051)\n"
         << "  --queue-capacity N       Maximum queued events (default 4096)\n"
-        << "  --consumer-delay-us N    Artificial delay for overload testing\n";
+        << "  --consumer-delay-us N    Artificial delay for overload testing\n"
+        << "  --output FILE            Persist accepted events to a .tflog\n"
+        << "  --flush-every N          Flush after N records (default 64)\n";
 }
 
 template <typename Integer>
@@ -262,19 +271,56 @@ int run_collector(int argc, char* argv[]) {
                         "consumer delay must be between 0 and 10000000 us");
                 }
                 options.consumer_delay = std::chrono::microseconds{delay};
+            } else if (option == "--output") {
+                options.output_path = value;
+                if (options.output_path.empty()) {
+                    throw std::invalid_argument("output path cannot be empty");
+                }
+            } else if (option == "--flush-every") {
+                const auto flush_every =
+                    parse_integer<std::uint64_t>(value, option);
+                if (flush_every == 0 || flush_every > 1'000'000) {
+                    throw std::invalid_argument(
+                        "flush interval must be between 1 and 1000000");
+                }
+                options.flush_every_records = flush_every;
             } else {
                 throw std::invalid_argument("unknown collector option: " +
                                             std::string{option});
             }
+        }
+        if (!options.output_path.empty() &&
+            options.consumer_delay.count() > 0) {
+            throw std::invalid_argument(
+                "consumer delay cannot be combined with file recording");
         }
     } catch (const std::exception& error) {
         std::cerr << "Collector error: " << error.what() << '\n';
         return 2;
     }
 
-    CountingConsumer consumer{options.consumer_delay};
+    std::unique_ptr<traceforge::telemetry::TelemetryConsumer> consumer;
+    traceforge::recording::LogWriterConsumer* recorder = nullptr;
+    if (options.output_path.empty()) {
+        consumer = std::make_unique<CountingConsumer>(options.consumer_delay);
+    } else {
+        auto recording_consumer =
+            std::make_unique<traceforge::recording::LogWriterConsumer>(
+                options.output_path,
+                traceforge::recording::LogWriterOptions{
+                    .flush_every_records = options.flush_every_records,
+                });
+        if (!recording_consumer->good()) {
+            std::cerr << "Collector error: " << recording_consumer->error()
+                      << '\n';
+            return 1;
+        }
+        recorder = recording_consumer.get();
+        consumer = std::move(recording_consumer);
+    }
+
     traceforge::telemetry::QueuedTelemetrySink sink{options.queue_capacity,
-                                                    consumer};
+                                                    *consumer};
     traceforge::telemetry::CollectorService service{sink};
     grpc::ServerBuilder builder;
     int selected_port = 0;
@@ -294,9 +340,47 @@ int run_collector(int argc, char* argv[]) {
         std::cout << " (selected port " << selected_port << ')';
     }
     std::cout << "; queue_capacity=" << options.queue_capacity
-              << "; overload_policy=reject_stream\n";
+              << "; overload_policy=reject_stream";
+    if (!options.output_path.empty()) {
+        std::cout << "; output=" << options.output_path.string()
+                  << "; flush_every=" << options.flush_every_records;
+    }
+    std::cout << '\n';
     server->Wait();
+    sink.shutdown();
+    if (recorder != nullptr && !recorder->flush()) {
+        std::cerr << "Failed to flush recording: " << recorder->error() << '\n';
+        return 1;
+    }
     return 0;
+}
+
+int run_inspect(const std::filesystem::path& path) {
+    const auto result = traceforge::recording::read_log(path);
+    std::cout << "path=" << path.string()
+              << " status=" << traceforge::recording::status_name(result.status)
+              << " records=" << result.records.size()
+              << " file_bytes=" << result.file_size
+              << " valid_bytes=" << result.valid_bytes
+              << " created_unix_ns=" << result.created_unix_ns;
+    if (result.status != traceforge::recording::LogReadStatus::complete) {
+        std::cout << " error_offset=" << result.error_offset << " message=\""
+                  << result.message << '"';
+    }
+    std::cout << '\n';
+    return result.status == traceforge::recording::LogReadStatus::complete ? 0
+                                                                           : 3;
+}
+
+int run_recover(const std::filesystem::path& path) {
+    const auto result = traceforge::recording::recover_truncated_tail(path);
+    std::cout << "path=" << path.string()
+              << " result=" << (result.succeeded ? "success" : "refused")
+              << " changed=" << (result.changed ? "true" : "false")
+              << " original_bytes=" << result.original_size
+              << " recovered_bytes=" << result.recovered_size << " message=\""
+              << result.message << "\"\n";
+    return result.succeeded ? 0 : 3;
 }
 
 }  // namespace
@@ -325,6 +409,22 @@ int main(int argc, char* argv[]) {
 
     if (argument == "generate") {
         return run_generator(argc, argv);
+    }
+
+    if (argument == "inspect") {
+        if (argc != 3) {
+            std::cerr << "Usage: traceforge inspect FILE\n";
+            return 2;
+        }
+        return run_inspect(argv[2]);
+    }
+
+    if (argument == "recover") {
+        if (argc != 3) {
+            std::cerr << "Usage: traceforge recover FILE\n";
+            return 2;
+        }
+        return run_recover(argv[2]);
     }
 
     std::cerr << "Unknown argument: " << argument << "\n\n";

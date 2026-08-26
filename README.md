@@ -11,8 +11,9 @@ TraceForge currently provides a strict C++20 build, Linux continuous
 integration, a versioned Protobuf telemetry contract, an asynchronous C++ gRPC
 collector with bounded ingestion, a deterministic multi-sensor workload
 generator, and a Flutter client for reading and streaming real phone motion and
-location sensors. Persistent recording is not implemented yet. Physical-device
-results will be documented only after the client is run on hardware.
+location sensors. Accepted events can be persisted in a versioned, checksummed
+append-only log with interrupted-tail recovery. Physical-device results will be
+documented only after the client is run on hardware.
 
 ## Planned capabilities
 
@@ -99,6 +100,35 @@ behavior reproducible during development:
 Automated tests exercise FIFO draining, fixed memory bounds, concurrent queue
 producers, six simultaneous gRPC streams, producer reconnection, and overload
 status propagation.
+
+### Binary recording and recovery
+
+Pass an output file to persist the queue consumer's accepted events:
+
+```sh
+./build/traceforge collect \
+  --listen 0.0.0.0:50051 \
+  --output session.tflog \
+  --flush-every 64
+```
+
+Inspect the file header, every record header, CRC32C checksums, declared payload
+lengths, contiguous record indexes, and Protobuf payloads:
+
+```sh
+./build/traceforge inspect session.tflog
+```
+
+If a shutdown interrupts only the final record, recover all prior complete
+records:
+
+```sh
+./build/traceforge recover session.tflog
+```
+
+Recovery refuses completed-record corruption; it never silently truncates past
+a checksum error. The complete byte layout and durability semantics are in
+[`docs/recording-format.md`](docs/recording-format.md).
 
 Generate one simulated second of telemetry and print its reproducibility hash:
 
