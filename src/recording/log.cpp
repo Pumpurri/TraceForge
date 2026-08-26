@@ -269,8 +269,9 @@ LogReadResult read_log(const std::filesystem::path& path,
         decode_little_endian<std::int64_t>(file_header, 16);
     result.valid_bytes = kFileHeaderSize;
     std::uint64_t offset = kFileHeaderSize;
+    std::uint64_t expected_record_index = 0;
     while (offset < result.file_size) {
-        if (result.records.size() == options.maximum_records) {
+        if (result.index.size() == options.maximum_records) {
             return make_failure(std::move(result),
                                 LogReadStatus::resource_limit, offset,
                                 "record-count limit reached");
@@ -332,10 +333,11 @@ LogReadResult read_log(const std::filesystem::path& path,
         LogRecord record;
         record.record_index =
             decode_little_endian<std::uint64_t>(record_header, 16);
-        if (record.record_index != result.records.size()) {
+        if (record.record_index != expected_record_index) {
             return make_failure(std::move(result), LogReadStatus::corrupt,
                                 offset, "record index is not contiguous");
         }
+        record.file_offset = offset;
         record.collector_arrival_timestamp_ns =
             decode_little_endian<std::int64_t>(record_header, 24);
         if (!record.event.ParseFromArray(payload.data(),
@@ -350,7 +352,20 @@ LogReadResult read_log(const std::filesystem::path& path,
                                 offset, "unsupported telemetry schema version");
         }
 
-        result.records.push_back(std::move(record));
+        result.index.push_back(LogIndexEntry{
+            .record_index = record.record_index,
+            .file_offset = offset,
+            .payload_size = payload_size,
+            .payload_crc32c =
+                decode_little_endian<std::uint32_t>(record_header, 12),
+            .collector_arrival_timestamp_ns =
+                record.collector_arrival_timestamp_ns,
+            .source_timestamp_ns = record.event.source_timestamp_ns(),
+        });
+        if (options.retain_records) {
+            result.records.push_back(std::move(record));
+        }
+        ++expected_record_index;
         offset += kRecordHeaderSize + payload_size;
         result.valid_bytes = offset;
     }

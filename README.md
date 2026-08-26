@@ -130,6 +130,39 @@ Recovery refuses completed-record corruption; it never silently truncates past
 a checksum error. The complete byte layout and durability semantics are in
 [`docs/recording-format.md`](docs/recording-format.md).
 
+### Indexed deterministic replay
+
+Open a validated recording, build its timestamp-to-file-offset index, and
+replay immediately:
+
+```sh
+./build/traceforge replay session.tflog
+```
+
+Replay uses collector-arrival timestamps because they share one clock domain
+across all producers. It orders records by that timestamp, then by append index
+when timestamps are equal. Source timestamps remain available to consumers but
+are not compared across incompatible device clock domains.
+
+Seek to an inclusive collector timestamp, stop before an exclusive timestamp,
+and reproduce the original timing at 2x speed:
+
+```sh
+./build/traceforge replay session.tflog \
+  --from-ns 1700000000000000000 \
+  --until-ns 1700000005000000000 \
+  --speed 2 \
+  --print-events
+```
+
+Speed `0` is the default and replays without sleeping. Every run reports a
+stable 64-bit hash over the selected ordered records, their collector
+timestamps, and their exact recorded Protobuf bytes. The index holds metadata
+and file offsets rather than retaining every decoded event; replay seeks to
+each payload and verifies its CRC32C before delivery. See
+[`docs/replay.md`](docs/replay.md) for the precise window, ordering, pacing, and
+hash contracts.
+
 Generate one simulated second of telemetry and print its reproducibility hash:
 
 ```sh

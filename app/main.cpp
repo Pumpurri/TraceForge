@@ -1,6 +1,7 @@
 #include <atomic>
 #include <charconv>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <exception>
 #include <filesystem>
@@ -21,6 +22,7 @@
 #include "traceforge/generator/workload_publisher.hpp"
 #include "traceforge/recording/log.hpp"
 #include "traceforge/recording/log_consumer.hpp"
+#include "traceforge/replay/replay.hpp"
 #include "traceforge/telemetry/collector_service.hpp"
 #include "traceforge/telemetry/queued_sink.hpp"
 #include "traceforge/version.hpp"
@@ -65,7 +67,9 @@ void print_help(std::ostream& output) {
            << "  traceforge generate [OPTIONS]\n"
            << "                          Generate deterministic sensor data\n"
            << "  traceforge inspect FILE Inspect and validate a telemetry log\n"
-           << "  traceforge recover FILE Remove an incomplete final record\n";
+           << "  traceforge recover FILE Remove an incomplete final record\n"
+           << "  traceforge replay FILE [OPTIONS]\n"
+           << "                          Deterministically replay a log\n";
 }
 
 void print_generator_help(std::ostream& output) {
@@ -91,6 +95,15 @@ void print_collector_help(std::ostream& output) {
         << "  --consumer-delay-us N    Artificial delay for overload testing\n"
         << "  --output FILE            Persist accepted events to a .tflog\n"
         << "  --flush-every N          Flush after N records (default 64)\n";
+}
+
+void print_replay_help(std::ostream& output) {
+    output
+        << "Replay options:\n"
+        << "  --from-ns N              Inclusive collector timestamp seek\n"
+        << "  --until-ns N             Exclusive collector timestamp limit\n"
+        << "  --speed X                Wall-clock speed; 0 is immediate\n"
+        << "  --print-events           Print each event in replay order\n";
 }
 
 template <typename Integer>
@@ -122,6 +135,17 @@ std::uint32_t parse_probability(std::string_view value,
                                     std::string{option});
     }
     return static_cast<std::uint32_t>(parsed);
+}
+
+double parse_speed(std::string_view value) {
+    const std::string text{value};
+    std::size_t consumed = 0;
+    const double parsed = std::stod(text, &consumed);
+    if (consumed != text.size() || !std::isfinite(parsed) || parsed < 0.0) {
+        throw std::invalid_argument(
+            "replay speed must be finite and non-negative");
+    }
+    return parsed;
 }
 
 int run_generator(int argc, char* argv[]) {
@@ -383,6 +407,86 @@ int run_recover(const std::filesystem::path& path) {
     return result.succeeded ? 0 : 3;
 }
 
+int run_replay(int argc, char* argv[]) {
+    if (argc < 3) {
+        std::cerr << "Usage: traceforge replay FILE [OPTIONS]\n";
+        return 2;
+    }
+
+    traceforge::replay::ReplayOptions options;
+    bool print_events = false;
+    try {
+        for (int index = 3; index < argc; ++index) {
+            const std::string_view option{argv[index]};
+            if (option == "--help" || option == "-h") {
+                print_replay_help(std::cout);
+                return 0;
+            }
+            if (option == "--print-events") {
+                print_events = true;
+                continue;
+            }
+
+            const auto value = option_value(index, argc, argv);
+            if (option == "--from-ns") {
+                options.from_collector_timestamp_ns =
+                    parse_integer<std::int64_t>(value, option);
+            } else if (option == "--until-ns") {
+                options.until_collector_timestamp_ns =
+                    parse_integer<std::int64_t>(value, option);
+            } else if (option == "--speed") {
+                options.speed = parse_speed(value);
+            } else {
+                throw std::invalid_argument("unknown replay option: " +
+                                            std::string{option});
+            }
+        }
+    } catch (const std::exception& error) {
+        std::cerr << "Replay error: " << error.what() << '\n';
+        return 2;
+    }
+
+    const traceforge::replay::ReplayEngine engine{argv[2]};
+    const auto result = engine.replay(
+        options,
+        print_events
+            ? traceforge::replay::ReplayConsumer{
+                  [](const traceforge::recording::LogRecord& record) {
+                      std::cout
+                          << "collector_timestamp_ns="
+                          << record.collector_arrival_timestamp_ns
+                          << " record_index=" << record.record_index
+                          << " source_timestamp_ns="
+                          << record.event.source_timestamp_ns()
+                          << " producer=" << record.event.producer_id()
+                          << " sequence=" << record.event.sequence_number()
+                          << " payload="
+                          << traceforge::generator::payload_name(
+                                 record.event.payload_case())
+                          << '\n';
+                      return true;
+                  }}
+            : traceforge::replay::ReplayConsumer{});
+
+    std::cout << "path=" << argv[2]
+              << " status=" << traceforge::replay::status_name(result.status)
+              << " indexed=" << result.indexed_records
+              << " replayed=" << result.replayed_records
+              << " speed=" << options.speed
+              << " hash=" << traceforge::replay::format_hash(result.hash);
+    if (result.first_timestamp_ns.has_value()) {
+        std::cout << " first_collector_timestamp_ns="
+                  << *result.first_timestamp_ns
+                  << " last_collector_timestamp_ns="
+                  << *result.last_timestamp_ns;
+    }
+    if (result.status != traceforge::replay::ReplayStatus::complete) {
+        std::cout << " message=\"" << result.message << '"';
+    }
+    std::cout << '\n';
+    return result.status == traceforge::replay::ReplayStatus::complete ? 0 : 3;
+}
+
 }  // namespace
 
 int main(int argc, char* argv[]) {
@@ -425,6 +529,10 @@ int main(int argc, char* argv[]) {
             return 2;
         }
         return run_recover(argv[2]);
+    }
+
+    if (argument == "replay") {
+        return run_replay(argc, argv);
     }
 
     std::cerr << "Unknown argument: " << argument << "\n\n";

@@ -66,12 +66,23 @@ enum class LogReadStatus {
 
 struct LogRecord {
     std::uint64_t record_index{0};
+    std::uint64_t file_offset{0};
     std::int64_t collector_arrival_timestamp_ns{0};
     v1::TelemetryEvent event;
 };
 
+struct LogIndexEntry {
+    std::uint64_t record_index{0};
+    std::uint64_t file_offset{0};
+    std::uint32_t payload_size{0};
+    std::uint32_t payload_crc32c{0};
+    std::int64_t collector_arrival_timestamp_ns{0};
+    std::int64_t source_timestamp_ns{0};
+};
+
 struct LogReadOptions {
     std::size_t maximum_records{1'000'000};
+    bool retain_records{true};
 };
 
 struct LogReadResult {
@@ -81,6 +92,7 @@ struct LogReadResult {
     std::uint64_t valid_bytes{0};
     std::uint64_t error_offset{0};
     std::string message;
+    std::vector<LogIndexEntry> index;
     std::vector<LogRecord> records;
 };
 
