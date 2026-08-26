@@ -2,13 +2,15 @@ import 'package:flutter/material.dart';
 
 import 'sample_stats.dart';
 import 'telemetry_controller.dart';
+import 'telemetry_publisher.dart';
 import 'telemetry_sample.dart';
 import 'telemetry_source.dart';
 
 class TelemetryDashboard extends StatefulWidget {
-  const TelemetryDashboard({required this.source, super.key});
+  const TelemetryDashboard({required this.source, this.publisher, super.key});
 
   final TelemetrySource source;
+  final TelemetryPublisher? publisher;
 
   @override
   State<TelemetryDashboard> createState() => _TelemetryDashboardState();
@@ -20,7 +22,10 @@ class _TelemetryDashboardState extends State<TelemetryDashboard> {
   @override
   void initState() {
     super.initState();
-    _controller = TelemetryController(source: widget.source);
+    _controller = TelemetryController(
+      source: widget.source,
+      publisher: widget.publisher,
+    );
   }
 
   @override
@@ -40,6 +45,11 @@ class _TelemetryDashboardState extends State<TelemetryDashboard> {
             padding: const EdgeInsets.all(16),
             children: [
               _StatusPanel(controller: _controller),
+              const SizedBox(height: 8),
+              Text(
+                _controller.transportStatus,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
               const SizedBox(height: 12),
               _MotionPanel(
                 title: 'Accelerometer',

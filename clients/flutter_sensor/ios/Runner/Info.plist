@@ -28,6 +28,8 @@
 	<true/>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>TraceForge uses location to validate real GPS telemetry capture.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>TraceForge streams sensor telemetry to the collector running on your local network.</string>
 	<key>NSMotionUsageDescription</key>
 	<string>TraceForge uses motion sensors to validate accelerometer and gyroscope telemetry capture.</string>
 	<key>UIApplicationSceneManifest</key>

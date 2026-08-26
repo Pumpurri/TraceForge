@@ -84,6 +84,11 @@ flutter test
 flutter run
 ```
 
+To stream from a physical phone, pass the collector Mac's LAN address through
+`--dart-define=TRACEFORGE_COLLECTOR_HOST=...`; `127.0.0.1` is only the default
+for a simulator running on the same Mac. See the client README for the complete
+command and platform permissions.
+
 ## Design direction
 
 The core recorder and replay engine will remain in C++. Phone and web clients

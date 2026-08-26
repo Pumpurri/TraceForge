@@ -3,16 +3,19 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import 'sample_stats.dart';
+import 'telemetry_publisher.dart';
 import 'telemetry_sample.dart';
 import 'telemetry_source.dart';
 
 class TelemetryController extends ChangeNotifier {
   TelemetryController({
     required this.source,
+    this.publisher,
     this.refreshInterval = const Duration(milliseconds: 200),
   });
 
   final TelemetrySource source;
+  final TelemetryPublisher? publisher;
   final Duration refreshInterval;
 
   final SampleStats accelerometerStats = SampleStats();
@@ -29,6 +32,9 @@ class TelemetryController extends ChangeNotifier {
   String get status => _status;
   String _status = 'Stopped';
 
+  String get transportStatus => _transportStatus;
+  String _transportStatus = 'Network stream stopped';
+
   StreamSubscription<MotionSample>? _accelerometerSubscription;
   StreamSubscription<MotionSample>? _gyroscopeSubscription;
   StreamSubscription<LocationSample>? _locationSubscription;
@@ -41,6 +47,16 @@ class TelemetryController extends ChangeNotifier {
 
     _isRunning = true;
     _status = 'Starting motion sensors';
+    if (publisher case final publisher?) {
+      try {
+        await publisher.start();
+        _transportStatus = 'Streaming to ${publisher.endpoint}';
+      } on Object catch (error) {
+        _transportStatus = 'Network stream unavailable: $error';
+      }
+    } else {
+      _transportStatus = 'Network stream disabled';
+    }
     notifyListeners();
 
     _accelerometerSubscription = source.accelerometerSamples().listen(
@@ -100,22 +116,44 @@ class TelemetryController extends ChangeNotifier {
     _gyroscopeSubscription = null;
     _locationSubscription = null;
     _status = 'Stopped';
+
+    if (publisher case final publisher?) {
+      try {
+        final summary = await publisher.stop();
+        _transportStatus =
+            'Collector accepted ${summary.acceptedEvents} events; '
+            '${summary.sequenceGaps} sequence gaps';
+      } on Object catch (error) {
+        _transportStatus = 'Network stream failed: $error';
+      }
+    }
     notifyListeners();
   }
 
   void _onAccelerometer(MotionSample sample) {
     accelerometer = sample;
     accelerometerStats.add(sample.sourceTimestamp);
+    _publish(() => publisher?.publishMotion(sample));
   }
 
   void _onGyroscope(MotionSample sample) {
     gyroscope = sample;
     gyroscopeStats.add(sample.sourceTimestamp);
+    _publish(() => publisher?.publishMotion(sample));
   }
 
   void _onLocation(LocationSample sample) {
     location = sample;
     locationStats.add(sample.sourceTimestamp);
+    _publish(() => publisher?.publishLocation(sample));
+  }
+
+  void _publish(void Function() publish) {
+    try {
+      publish();
+    } on Object catch (error) {
+      _transportStatus = 'Network stream failed: $error';
+    }
   }
 
   void _onStreamError(String streamName, Object error) {
@@ -133,6 +171,19 @@ class TelemetryController extends ChangeNotifier {
     unawaited(_accelerometerSubscription?.cancel());
     unawaited(_gyroscopeSubscription?.cancel());
     unawaited(_locationSubscription?.cancel());
+    if (publisher case final publisher?) {
+      unawaited(_stopPublisherIgnoringErrors(publisher));
+    }
     super.dispose();
+  }
+
+  static Future<void> _stopPublisherIgnoringErrors(
+    TelemetryPublisher publisher,
+  ) async {
+    try {
+      await publisher.stop();
+    } on Object {
+      // Disposal cannot surface an asynchronous transport error to the UI.
+    }
   }
 }
