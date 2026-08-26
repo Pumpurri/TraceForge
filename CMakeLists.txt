@@ -94,6 +94,7 @@ target_link_libraries(
 add_library(
     traceforge_core
     src/about.cpp
+    src/generator/workload_generator.cpp
     src/telemetry/collector_service.cpp
     src/telemetry/validation.cpp
 )
@@ -147,6 +148,20 @@ if(BUILD_TESTING)
     add_test(
         NAME traceforge.telemetry_proto_roundtrip
         COMMAND traceforge_telemetry_proto_test
+    )
+
+    add_executable(
+        traceforge_workload_generator_test
+        tests/workload_generator_test.cpp
+    )
+    target_link_libraries(
+        traceforge_workload_generator_test
+        PRIVATE traceforge::core
+    )
+    traceforge_enable_warnings(traceforge_workload_generator_test)
+    add_test(
+        NAME traceforge.workload_generator
+        COMMAND traceforge_workload_generator_test
     )
 
     add_executable(

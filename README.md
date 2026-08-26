@@ -7,12 +7,12 @@ partial writes, and reproducing a recorded session reliably.
 
 ## Status
 
-TraceForge currently provides a strict C++20 build, a minimal command-line
-executable, Linux continuous integration, a versioned Protobuf telemetry
-contract, an asynchronous C++ gRPC collector, and a Flutter feasibility client
-for reading real phone motion and location sensors. Persistent recording is not
-implemented yet. Physical-device results will be documented only after the
-client is run on hardware.
+TraceForge currently provides a strict C++20 build, Linux continuous
+integration, a versioned Protobuf telemetry contract, an asynchronous C++ gRPC
+collector, a deterministic multi-sensor workload generator, and a Flutter
+client for reading and streaming real phone motion and location sensors.
+Persistent recording is not implemented yet. Physical-device results will be
+documented only after the client is run on hardware.
 
 ## Planned capabilities
 
@@ -73,6 +73,33 @@ producer identity, monotonically increasing sequence number, source timestamp,
 explicit clock domain, and typed payload. The collector validates events,
 captures its own arrival timestamp, reports sequence gaps, and returns explicit
 gRPC errors for invalid input or an overloaded sink.
+
+Generate one simulated second of telemetry and print its reproducibility hash:
+
+```sh
+./build/traceforge generate --seed 42 --duration-ms 1000
+```
+
+The default workload models a combined 100 Hz IMU stream (50 Hz accelerometer
+and 50 Hz gyroscope), 30 Hz camera metadata, 10 Hz GPS, 1 Hz temperature, 2 Hz
+fault monitoring, and asynchronous controller state transitions. Generation is
+deterministic for a seed and supports portable integer-based timestamp jitter,
+clock drift, drops, duplicates, and adjacent-event reordering:
+
+```sh
+./build/traceforge generate \
+  --seed 8675309 \
+  --duration-ms 5000 \
+  --jitter-us 200 \
+  --clock-drift-ppm 125 \
+  --drop-per-million 1000 \
+  --duplicate-per-million 500 \
+  --reorder-per-million 500
+```
+
+Use `--print-events` to inspect the ordered event stream. Rates, fault counts,
+and the hash are always reported; the hash is for reproducibility checks, not
+cryptographic integrity.
 
 The phone client is under `clients/flutter_sensor`:
 
