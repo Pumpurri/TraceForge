@@ -1,0 +1,17 @@
+.DS_Store
+
+# Local planning notes (intentionally not committed)
+DEVELOPMENT_PLAN.md
+
+# C++ build output
+build/
+cmake-build-*/
+compile_commands.json
+
+# Generated telemetry recordings and indexes
+*.tflog
+*.tfidx
+
+# Local editor state
+.idea/
+.vscode/
