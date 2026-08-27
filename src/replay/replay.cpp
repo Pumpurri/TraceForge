@@ -39,10 +39,16 @@ void hash_little_endian(std::uint64_t& hash, Integer value) noexcept {
 
 [[nodiscard]] bool read_payload(std::ifstream& input,
                                 const recording::LogIndexEntry& entry,
+                                bool sequential_record,
                                 std::vector<std::uint8_t>& payload) {
     input.clear();
-    input.seekg(static_cast<std::streamoff>(
-        entry.file_offset + recording::kRecordHeaderSize));
+    if (sequential_record) {
+        input.ignore(static_cast<std::streamsize>(
+            recording::kRecordHeaderSize));
+    } else {
+        input.seekg(static_cast<std::streamoff>(
+            entry.file_offset + recording::kRecordHeaderSize));
+    }
     if (!input) {
         return false;
     }
@@ -129,6 +135,7 @@ ReplayResult ReplayEngine::replay(ReplayOptions options,
 
     std::optional<std::int64_t> replay_origin_ns;
     std::optional<std::chrono::steady_clock::time_point> wall_origin;
+    std::optional<std::uint64_t> next_physical_offset;
     std::vector<std::uint8_t> payload;
     for (; current != index_.end(); ++current) {
         const auto timestamp = current->collector_arrival_timestamp_ns;
@@ -136,11 +143,17 @@ ReplayResult ReplayEngine::replay(ReplayOptions options,
             timestamp >= *options.until_collector_timestamp_ns) {
             break;
         }
-        if (!read_payload(input, *current, payload)) {
+        const bool sequential_record =
+            next_physical_offset.has_value() &&
+            *next_physical_offset == current->file_offset;
+        if (!read_payload(input, *current, sequential_record, payload)) {
             result.status = ReplayStatus::io_error;
             result.message = "failed to read indexed record payload";
             return result;
         }
+        next_physical_offset = current->file_offset +
+                               recording::kRecordHeaderSize +
+                               current->payload_size;
         if (recording::crc32c(payload) != current->payload_crc32c) {
             result.status = ReplayStatus::log_error;
             result.message = "record payload changed after index construction";

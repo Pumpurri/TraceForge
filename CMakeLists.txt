@@ -157,6 +157,13 @@ add_executable(traceforge app/main.cpp)
 target_link_libraries(traceforge PRIVATE traceforge::core)
 traceforge_enable_warnings(traceforge)
 
+add_executable(
+    traceforge_benchmark
+    benchmarks/pipeline_benchmark.cpp
+)
+target_link_libraries(traceforge_benchmark PRIVATE traceforge::core)
+traceforge_enable_warnings(traceforge_benchmark)
+
 if(TRACEFORGE_BUILD_FUZZER)
     if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         message(FATAL_ERROR "The recording fuzzer requires a Clang toolchain")

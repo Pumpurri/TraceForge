@@ -229,8 +229,23 @@ command and platform permissions.
 ## Design direction
 
 The core recorder and replay engine will remain in C++. Phone and web clients
-will act only as data sources and debugging interfaces. Performance claims will
-be added only after they are measured with documented, reproducible commands.
+will act only as data sources and debugging interfaces. Performance claims are
+included only when measured with documented, reproducible commands.
+
+## Measured performance
+
+On a 12-core Apple M4 Pro, the reproducible 250,000-event Release benchmark
+measured five-run medians of 103,715 events/s through the complete loopback gRPC
+ingestion path, 12/43/81 µs p50/p95/p99 collector-queue latency, and 1,684,174
+records/s for immediate replay, with zero rejected events. A profile-guided
+sequential-read fast path improved replay throughput by 3.45x while preserving
+the replay hash and out-of-order fallback.
+
+The exact hardware, commands, raw metric definitions, observed ranges,
+resource measurements, limitations, and before/after comparison are in
+[`docs/benchmarks.md`](docs/benchmarks.md). Run
+`./build/traceforge_benchmark --help` to change the event count, producer count,
+or bounded queue capacity.
 
 ## Reliability tooling
 
