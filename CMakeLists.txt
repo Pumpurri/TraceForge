@@ -8,6 +8,32 @@ project(
 )
 
 option(TRACEFORGE_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
+option(TRACEFORGE_ENABLE_ASAN "Enable AddressSanitizer" OFF)
+option(TRACEFORGE_ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer" OFF)
+option(TRACEFORGE_ENABLE_TSAN "Enable ThreadSanitizer" OFF)
+option(TRACEFORGE_BUILD_FUZZER "Build the libFuzzer recording target" OFF)
+
+if(TRACEFORGE_ENABLE_ASAN AND TRACEFORGE_ENABLE_TSAN)
+    message(FATAL_ERROR "AddressSanitizer and ThreadSanitizer cannot be combined")
+endif()
+
+set(TRACEFORGE_SANITIZERS "")
+if(TRACEFORGE_ENABLE_ASAN)
+    list(APPEND TRACEFORGE_SANITIZERS address)
+endif()
+if(TRACEFORGE_ENABLE_UBSAN)
+    list(APPEND TRACEFORGE_SANITIZERS undefined)
+endif()
+if(TRACEFORGE_ENABLE_TSAN)
+    list(APPEND TRACEFORGE_SANITIZERS thread)
+endif()
+
+if(TRACEFORGE_SANITIZERS)
+    if(MSVC)
+        message(FATAL_ERROR "TraceForge sanitizer options require Clang or GCC")
+    endif()
+    list(JOIN TRACEFORGE_SANITIZERS "," TRACEFORGE_SANITIZER_FLAGS)
+endif()
 
 find_package(Protobuf CONFIG REQUIRED)
 find_package(gRPC CONFIG REQUIRED)
@@ -31,6 +57,18 @@ function(traceforge_enable_warnings target)
         if(TRACEFORGE_WARNINGS_AS_ERRORS)
             target_compile_options(${target} PRIVATE -Werror)
         endif()
+    endif()
+    if(TRACEFORGE_SANITIZERS)
+        target_compile_options(
+            ${target}
+            PRIVATE
+                -fno-omit-frame-pointer
+                "-fsanitize=${TRACEFORGE_SANITIZER_FLAGS}"
+        )
+        target_link_options(
+            ${target}
+            PRIVATE "-fsanitize=${TRACEFORGE_SANITIZER_FLAGS}"
+        )
     endif()
 endfunction()
 
@@ -118,6 +156,23 @@ traceforge_enable_warnings(traceforge_core)
 add_executable(traceforge app/main.cpp)
 target_link_libraries(traceforge PRIVATE traceforge::core)
 traceforge_enable_warnings(traceforge)
+
+if(TRACEFORGE_BUILD_FUZZER)
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        message(FATAL_ERROR "The recording fuzzer requires a Clang toolchain")
+    endif()
+    if(TRACEFORGE_ENABLE_TSAN)
+        message(FATAL_ERROR "The recording fuzzer cannot be combined with TSan")
+    endif()
+    add_executable(
+        traceforge_recording_fuzz
+        fuzz/recording_parser_fuzz.cpp
+    )
+    target_link_libraries(traceforge_recording_fuzz PRIVATE traceforge::core)
+    target_compile_options(traceforge_recording_fuzz PRIVATE -fsanitize=fuzzer)
+    target_link_options(traceforge_recording_fuzz PRIVATE -fsanitize=fuzzer)
+    traceforge_enable_warnings(traceforge_recording_fuzz)
+endif()
 
 include(CTest)
 if(BUILD_TESTING)
@@ -254,4 +309,19 @@ if(BUILD_TESTING)
         NAME traceforge.collector_integration
         COMMAND traceforge_collector_integration_test
     )
+
+    if(UNIX)
+        find_program(TRACEFORGE_BASH_EXECUTABLE bash REQUIRED)
+        add_test(
+            NAME traceforge.graceful_shutdown
+            COMMAND
+                "${TRACEFORGE_BASH_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/graceful_shutdown_test.sh"
+                "$<TARGET_FILE:traceforge>"
+        )
+        set_tests_properties(
+            traceforge.graceful_shutdown
+            PROPERTIES TIMEOUT 10
+        )
+    endif()
 endif()

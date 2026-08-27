@@ -5,6 +5,7 @@ DEVELOPMENT_PLAN.md
 
 # C++ build output
 build/
+build-*/
 cmake-build-*/
 compile_commands.json
 

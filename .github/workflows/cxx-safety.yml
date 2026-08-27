@@ -1,0 +1,94 @@
+name: C++ safety
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  sanitizers:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: ASan + UBSan
+            cmake_flags: >-
+              -DTRACEFORGE_ENABLE_ASAN=ON
+              -DTRACEFORGE_ENABLE_UBSAN=ON
+            exclude_regex: ""
+            runtime: >-
+              ASAN_OPTIONS=detect_leaks=1:halt_on_error=1
+              UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1
+          - name: TSan core concurrency
+            cmake_flags: -DTRACEFORGE_ENABLE_TSAN=ON
+            exclude_regex: >-
+              traceforge\.(collector_integration|workload_publisher_integration)
+            runtime: TSAN_OPTIONS=halt_on_error=1
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install C++ dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes \
+            cmake \
+            libgrpc++-dev \
+            libprotobuf-dev \
+            ninja-build \
+            protobuf-compiler \
+            protobuf-compiler-grpc
+      - name: Configure
+        run: >-
+          cmake -S . -B build-safety -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DTRACEFORGE_WARNINGS_AS_ERRORS=ON
+          ${{ matrix.cmake_flags }}
+      - name: Build
+        run: cmake --build build-safety --parallel
+      - name: Test complete suite
+        if: matrix.exclude_regex == ''
+        run: >-
+          env ${{ matrix.runtime }}
+          ctest --test-dir build-safety --output-on-failure
+      - name: Test dependency-independent suite
+        if: matrix.exclude_regex != ''
+        run: >-
+          env ${{ matrix.runtime }}
+          ctest --test-dir build-safety --output-on-failure
+          --exclude-regex '${{ matrix.exclude_regex }}'
+
+  recording-fuzzer:
+    name: Recording parser fuzz smoke test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install C++ dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes \
+            clang \
+            cmake \
+            libgrpc++-dev \
+            libprotobuf-dev \
+            ninja-build \
+            protobuf-compiler \
+            protobuf-compiler-grpc
+      - name: Configure
+        env:
+          CC: clang
+          CXX: clang++
+        run: >-
+          cmake -S . -B build-fuzz -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DBUILD_TESTING=OFF
+          -DTRACEFORGE_BUILD_FUZZER=ON
+          -DTRACEFORGE_ENABLE_ASAN=ON
+          -DTRACEFORGE_ENABLE_UBSAN=ON
+      - name: Build
+        run: cmake --build build-fuzz --target traceforge_recording_fuzz
+      - name: Fuzz 5,000 inputs
+        run: >-
+          ./build-fuzz/traceforge_recording_fuzz
+          -runs=5000
+          -max_len=1048576

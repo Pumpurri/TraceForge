@@ -2,6 +2,7 @@
 #include <charconv>
 #include <chrono>
 #include <cmath>
+#include <csignal>
 #include <cstdint>
 #include <exception>
 #include <filesystem>
@@ -28,6 +29,12 @@
 #include "traceforge/version.hpp"
 
 namespace {
+
+volatile std::sig_atomic_t g_shutdown_signal = 0;
+
+void request_shutdown(int signal_number) {
+    g_shutdown_signal = signal_number;
+}
 
 class CountingConsumer final : public traceforge::telemetry::TelemetryConsumer {
   public:
@@ -359,6 +366,12 @@ int run_collector(int argc, char* argv[]) {
         return 1;
     }
 
+    g_shutdown_signal = 0;
+    const auto previous_interrupt_handler =
+        std::signal(SIGINT, request_shutdown);
+    const auto previous_terminate_handler =
+        std::signal(SIGTERM, request_shutdown);
+
     std::cout << "TraceForge collector listening on " << options.listen_address;
     if (options.listen_address.ends_with(":0")) {
         std::cout << " (selected port " << selected_port << ')';
@@ -369,13 +382,37 @@ int run_collector(int argc, char* argv[]) {
         std::cout << "; output=" << options.output_path.string()
                   << "; flush_every=" << options.flush_every_records;
     }
-    std::cout << '\n';
+    std::cout << std::endl;
+
+    std::jthread signal_monitor{[&server](std::stop_token stop) {
+        while (!stop.stop_requested() && g_shutdown_signal == 0) {
+            std::this_thread::sleep_for(std::chrono::milliseconds{10});
+        }
+        if (g_shutdown_signal != 0) {
+            server->Shutdown();
+        }
+    }};
+
     server->Wait();
+    signal_monitor.request_stop();
     sink.shutdown();
     if (recorder != nullptr && !recorder->flush()) {
         std::cerr << "Failed to flush recording: " << recorder->error() << '\n';
         return 1;
     }
+
+    const auto stats = sink.stats();
+    std::cout << "collector_shutdown="
+              << (g_shutdown_signal == 0 ? "server" : "signal")
+              << " signal=" << g_shutdown_signal
+              << " accepted=" << stats.queue.accepted_items
+              << " rejected=" << stats.queue.rejected_items
+              << " consumed=" << stats.consumed_events
+              << " queue_high_watermark=" << stats.queue.high_watermark
+              << " consumer_failures=" << stats.consumer_failures << '\n';
+
+    static_cast<void>(std::signal(SIGINT, previous_interrupt_handler));
+    static_cast<void>(std::signal(SIGTERM, previous_terminate_handler));
     return 0;
 }
 

@@ -101,6 +101,11 @@ Automated tests exercise FIFO draining, fixed memory bounds, concurrent queue
 producers, six simultaneous gRPC streams, producer reconnection, and overload
 status propagation.
 
+The collector handles `SIGINT` and `SIGTERM` as graceful shutdown requests. It
+stops gRPC, drains accepted queue entries, flushes the recording, and reports
+final accepted, rejected, consumed, high-watermark, and consumer-failure
+counters before exiting.
+
 ### Binary recording and recovery
 
 Pass an output file to persist the queue consumer's accepted events:
@@ -226,3 +231,11 @@ command and platform permissions.
 The core recorder and replay engine will remain in C++. Phone and web clients
 will act only as data sources and debugging interfaces. Performance claims will
 be added only after they are measured with documented, reproducible commands.
+
+## Reliability tooling
+
+TraceForge provides opt-in CMake configurations for AddressSanitizer,
+UndefinedBehaviorSanitizer, and ThreadSanitizer, plus a Clang libFuzzer target
+that tests both arbitrary bytes and structured mutations of valid recordings.
+The exact local and CI commands, instrumentation boundary, and documented gRPC
+TSan exclusion are in [`docs/testing.md`](docs/testing.md).
