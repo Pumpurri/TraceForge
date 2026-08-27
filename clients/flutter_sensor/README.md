@@ -38,6 +38,12 @@ Physical movement should update the motion values and sample counters. GPS may
 update much more slowly and may be unreliable indoors. This development path
 uses insecure local-network gRPC; it is not intended for internet exposure.
 
+The client reports **Connecting** until the gRPC channel reaches its ready
+state; it does not label a stream active merely because a channel object was
+created. Connection attempts and collector acknowledgements are bounded by
+five-second timeouts so an unreachable collector cannot leave Start or Stop
+waiting indefinitely.
+
 Before a phone is available, verify the complete Dart-to-C++ transport with
 three deterministic sample events. Start the collector, then run in another
 terminal:

@@ -34,6 +34,7 @@ class TelemetryController extends ChangeNotifier {
 
   String get transportStatus => _transportStatus;
   String _transportStatus = 'Network stream stopped';
+  bool _publisherStarted = false;
 
   StreamSubscription<MotionSample>? _accelerometerSubscription;
   StreamSubscription<MotionSample>? _gyroscopeSubscription;
@@ -48,10 +49,14 @@ class TelemetryController extends ChangeNotifier {
     _isRunning = true;
     _status = 'Starting motion sensors';
     if (publisher case final publisher?) {
+      _transportStatus = 'Connecting to ${publisher.endpoint}';
+      notifyListeners();
       try {
         await publisher.start();
+        _publisherStarted = true;
         _transportStatus = 'Streaming to ${publisher.endpoint}';
       } on Object catch (error) {
+        _publisherStarted = false;
         _transportStatus = 'Network stream unavailable: $error';
       }
     } else {
@@ -117,7 +122,8 @@ class TelemetryController extends ChangeNotifier {
     _locationSubscription = null;
     _status = 'Stopped';
 
-    if (publisher case final publisher?) {
+    if (publisher case final publisher? when _publisherStarted) {
+      _publisherStarted = false;
       try {
         final summary = await publisher.stop();
         _transportStatus =
@@ -171,7 +177,8 @@ class TelemetryController extends ChangeNotifier {
     unawaited(_accelerometerSubscription?.cancel());
     unawaited(_gyroscopeSubscription?.cancel());
     unawaited(_locationSubscription?.cancel());
-    if (publisher case final publisher?) {
+    if (publisher case final publisher? when _publisherStarted) {
+      _publisherStarted = false;
       unawaited(_stopPublisherIgnoringErrors(publisher));
     }
     super.dispose();

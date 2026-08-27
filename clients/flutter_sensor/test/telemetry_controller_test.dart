@@ -118,6 +118,28 @@ void main() {
     controller.dispose();
     await source.close();
   });
+
+  test('reports connecting until the publisher becomes ready', () async {
+    final source = FakeTelemetrySource();
+    final startGate = Completer<void>();
+    final publisher = FakeTelemetryPublisher(startGate: startGate);
+    final controller = TelemetryController(
+      source: source,
+      publisher: publisher,
+    );
+
+    final start = controller.start();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(controller.transportStatus, 'Connecting to collector.test:50051');
+    startGate.complete();
+    await start;
+    expect(controller.transportStatus, 'Streaming to collector.test:50051');
+
+    await controller.stop();
+    controller.dispose();
+    await source.close();
+  });
 }
 
 class FakeTelemetrySource implements TelemetrySource {
@@ -148,6 +170,9 @@ class FakeTelemetrySource implements TelemetrySource {
 }
 
 class FakeTelemetryPublisher implements TelemetryPublisher {
+  FakeTelemetryPublisher({this.startGate});
+
+  final Completer<void>? startGate;
   int startCount = 0;
   int stopCount = 0;
   final motionSamples = <MotionSample>[];
@@ -159,6 +184,7 @@ class FakeTelemetryPublisher implements TelemetryPublisher {
   @override
   Future<void> start() async {
     startCount += 1;
+    await startGate?.future;
   }
 
   @override
