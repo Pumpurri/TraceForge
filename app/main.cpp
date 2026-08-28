@@ -344,6 +344,7 @@ int run_collector(int argc, char* argv[]) {
                 options.output_path,
                 traceforge::recording::LogWriterOptions{
                     .flush_every_records = options.flush_every_records,
+                    .created_unix_ns = 0,
                 });
         if (!recording_consumer->good()) {
             std::cerr << "Collector error: " << recording_consumer->error()

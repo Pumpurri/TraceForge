@@ -93,10 +93,9 @@ std::span<const recording::LogIndexEntry> ReplayEngine::index() const noexcept {
 
 ReplayResult ReplayEngine::replay(ReplayOptions options,
                                   ReplayConsumer consumer) const {
-    ReplayResult result{
-        .indexed_records = static_cast<std::uint64_t>(index_.size()),
-        .hash = kFnvOffsetBasis,
-    };
+    ReplayResult result;
+    result.indexed_records = static_cast<std::uint64_t>(index_.size());
+    result.hash = kFnvOffsetBasis;
     if (!good()) {
         result.status = ReplayStatus::log_error;
         result.message = error_;
@@ -160,11 +159,10 @@ ReplayResult ReplayEngine::replay(ReplayOptions options,
             return result;
         }
 
-        recording::LogRecord record{
-            .record_index = current->record_index,
-            .file_offset = current->file_offset,
-            .collector_arrival_timestamp_ns = timestamp,
-        };
+        recording::LogRecord record;
+        record.record_index = current->record_index;
+        record.file_offset = current->file_offset;
+        record.collector_arrival_timestamp_ns = timestamp;
         if (!record.event.ParseFromArray(payload.data(),
                                          static_cast<int>(payload.size())) ||
             record.event.schema_version() !=

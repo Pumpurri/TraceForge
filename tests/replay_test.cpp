@@ -134,7 +134,8 @@ int main() {
 
     const auto invalid_window = engine.replay(
         {.from_collector_timestamp_ns = 20'000'000,
-         .until_collector_timestamp_ns = 20'000'000});
+         .until_collector_timestamp_ns = 20'000'000,
+         .speed = 0.0});
     if (invalid_window.status !=
         traceforge::replay::ReplayStatus::invalid_options) {
         std::cerr << "Invalid replay window was accepted\n";

@@ -155,7 +155,7 @@ void validate_config(const GeneratorConfig& config) {
                                             PortableRandom& random) {
     v1::TelemetryEvent event;
     event.set_schema_version(telemetry::kTelemetrySchemaVersion);
-    event.set_producer_id(producer_id);
+    event.set_producer_id(producer_id.data(), producer_id.size());
     event.set_sequence_number(sequence_number);
     event.set_source_timestamp_ns(
         kBaseTimestampNs +

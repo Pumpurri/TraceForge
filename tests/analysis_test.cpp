@@ -42,7 +42,7 @@ traceforge::v1::TelemetryEvent event(std::string_view producer,
                                      bool accelerometer) {
     traceforge::v1::TelemetryEvent result;
     result.set_schema_version(traceforge::telemetry::kTelemetrySchemaVersion);
-    result.set_producer_id(producer);
+    result.set_producer_id(producer.data(), producer.size());
     result.set_sequence_number(sequence);
     result.set_source_timestamp_ns(source_timestamp_ns);
     result.set_source_clock(traceforge::v1::CLOCK_DOMAIN_UTC);

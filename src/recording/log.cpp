@@ -43,7 +43,9 @@ template <typename Integer>
     using Unsigned = std::make_unsigned_t<Integer>;
     Unsigned value = 0;
     for (std::size_t byte = 0; byte < sizeof(Integer); ++byte) {
-        value |= static_cast<Unsigned>(source[offset + byte]) << (byte * 8U);
+        const auto shifted = static_cast<Unsigned>(
+            static_cast<std::uint64_t>(source[offset + byte]) << (byte * 8U));
+        value = static_cast<Unsigned>(value | shifted);
     }
     return static_cast<Integer>(value);
 }
@@ -397,6 +399,7 @@ RecoveryResult recover_truncated_tail(const std::filesystem::path& path,
     RecoveryResult recovery{
         .original_size = read_result.file_size,
         .recovered_size = read_result.file_size,
+        .message = {},
     };
     if (read_result.status == LogReadStatus::complete) {
         recovery.succeeded = true;

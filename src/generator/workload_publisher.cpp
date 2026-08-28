@@ -116,10 +116,9 @@ WorkloadPublisher::publish(std::span<const v1::TelemetryEvent> events) const {
     for (std::size_t index = 0; index < producer_events.size(); ++index) {
         threads.emplace_back([&, index] {
             const auto& producer = producer_events[index];
-            ProducerPublishResult result{
-                .producer_id = producer.producer_id,
-                .attempted_events = producer.events.size(),
-            };
+            ProducerPublishResult result;
+            result.producer_id = producer.producer_id;
+            result.attempted_events = producer.events.size();
 
             auto stub = v1::TelemetryCollector::NewStub(channel);
             grpc::ClientContext context;
