@@ -122,7 +122,9 @@ int main() {
     }
 
     const auto pacing_started = std::chrono::steady_clock::now();
-    const auto paced = engine.replay({.speed = 10.0});
+    traceforge::replay::ReplayOptions pacing_options;
+    pacing_options.speed = 10.0;
+    const auto paced = engine.replay(pacing_options);
     const auto pacing_elapsed =
         std::chrono::steady_clock::now() - pacing_started;
     if (paced.status != traceforge::replay::ReplayStatus::complete ||
