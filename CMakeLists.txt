@@ -35,7 +35,10 @@ if(TRACEFORGE_SANITIZERS)
     list(JOIN TRACEFORGE_SANITIZERS "," TRACEFORGE_SANITIZER_FLAGS)
 endif()
 
-find_package(Protobuf CONFIG REQUIRED)
+find_package(Protobuf CONFIG QUIET)
+if(NOT Protobuf_FOUND)
+    find_package(Protobuf REQUIRED)
+endif()
 find_package(gRPC CONFIG REQUIRED)
 
 function(traceforge_enable_warnings target)
