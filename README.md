@@ -114,6 +114,31 @@ contract uses the collector's single clock domain and append index instead.
 See [`docs/demo.md`](docs/demo.md) for the complete commands, recovery example,
 expected output, and a concise recording script.
 
+## Verified network interruption
+
+A separate 60.4-second physical-device run intentionally disabled the phone's
+Wi-Fi and then rejoined the same LAN while the collector remained active. The
+final recording stayed complete and replayable:
+
+| Measurement | Result |
+| --- | ---: |
+| Final recording | 6,094 records, 609,302 bytes |
+| Collector accepted / rejected | 6,094 / 0 events |
+| Sequence gaps / non-increasing sequences | 0 / 0 |
+| Accelerometer / gyroscope rate | 50.259 / 50.256 Hz |
+| Queue high-water mark | 220 events |
+| UTC arrival delta p95 / p99 | 9.117 / 11.521 seconds |
+| Immediate replay | 6,094 / 6,094 records |
+| Stable replay hash | `ca959f0e6ba5aaef` |
+
+The zero gaps, recovered nominal IMU rates, larger queue high-water mark, and
+multi-second arrival-delta tail are consistent with telemetry being buffered
+during the outage and delivered in a burst after reconnection. The UTC arrival
+delta includes clock offset and batching, so it is useful as an interruption
+signal but is not presented as pure network latency. Raw recordings are not
+committed because they contain location payloads. The repeatable procedure and
+privacy-safe output are in [`docs/demo.md`](docs/demo.md).
+
 ## Build
 
 Requirements:
