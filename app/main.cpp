@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <exception>
 #include <filesystem>
+#include <iomanip>
 #include <iostream>
 #include <limits>
 #include <memory>
@@ -19,6 +20,7 @@
 #include <grpcpp/server_builder.h>
 
 #include "traceforge/about.hpp"
+#include "traceforge/analysis/analyzer.hpp"
 #include "traceforge/generator/workload_generator.hpp"
 #include "traceforge/generator/workload_publisher.hpp"
 #include "traceforge/recording/log.hpp"
@@ -74,6 +76,8 @@ void print_help(std::ostream& output) {
            << "  traceforge generate [OPTIONS]\n"
            << "                          Generate deterministic sensor data\n"
            << "  traceforge inspect FILE Inspect and validate a telemetry log\n"
+           << "  traceforge analyze FILE Summarize rates, jitter, gaps, and "
+              "timing\n"
            << "  traceforge recover FILE Remove an incomplete final record\n"
            << "  traceforge replay FILE [OPTIONS]\n"
            << "                          Deterministically replay a log\n";
@@ -444,6 +448,66 @@ int run_recover(const std::filesystem::path& path) {
     return result.succeeded ? 0 : 3;
 }
 
+void print_optional_metric(std::ostream& output,
+                           const std::optional<double>& metric) {
+    if (metric.has_value()) {
+        output << *metric;
+    } else {
+        output << "n/a";
+    }
+}
+
+int run_analyze(const std::filesystem::path& path) {
+    const auto report = traceforge::analysis::analyze_log(path);
+    std::cout << "path=" << path.string()
+              << " status=" << traceforge::analysis::status_name(report.status)
+              << " records=" << report.records
+              << " file_bytes=" << report.file_bytes;
+    if (report.status != traceforge::analysis::AnalysisStatus::complete) {
+        std::cout << " message=\"" << report.message << "\"\n";
+        return 3;
+    }
+
+    std::cout << std::fixed << std::setprecision(3) << " duration_s=";
+    print_optional_metric(std::cout, report.duration_seconds);
+    std::cout << '\n';
+
+    for (const auto& producer : report.producers) {
+        std::cout << "producer=" << producer.producer_id
+                  << " records=" << producer.records
+                  << " sequence_gaps=" << producer.sequence_gaps
+                  << " non_increasing_sequences="
+                  << producer.non_increasing_sequences << '\n';
+    }
+
+    for (const auto& stream : report.streams) {
+        std::cout << "stream=" << stream.producer_id << '/' << stream.payload
+                  << " records=" << stream.records << " rate_hz=";
+        print_optional_metric(std::cout, stream.observed_rate_hz);
+        std::cout << " interarrival_p50_ms=";
+        print_optional_metric(std::cout, stream.interarrival_p50_ms);
+        std::cout << " jitter_p95_ms=";
+        print_optional_metric(std::cout, stream.jitter_p95_ms);
+        std::cout << " source_timestamp_regressions="
+                  << stream.source_timestamp_regressions << '\n';
+    }
+
+    if (report.utc_arrival_delta.has_value()) {
+        const auto& delta = *report.utc_arrival_delta;
+        std::cout << "utc_arrival_delta samples=" << delta.samples
+                  << " p50_ms=" << delta.p50_ms
+                  << " p95_ms=" << delta.p95_ms
+                  << " p99_ms=" << delta.p99_ms
+                  << " max_ms=" << delta.maximum_ms << '\n';
+    } else {
+        std::cout << "utc_arrival_delta samples=0\n";
+    }
+    std::cout << "faults warnings=" << report.faults.warnings
+              << " errors=" << report.faults.errors
+              << " critical=" << report.faults.critical << '\n';
+    return 0;
+}
+
 int run_replay(int argc, char* argv[]) {
     if (argc < 3) {
         std::cerr << "Usage: traceforge replay FILE [OPTIONS]\n";
@@ -566,6 +630,14 @@ int main(int argc, char* argv[]) {
             return 2;
         }
         return run_recover(argv[2]);
+    }
+
+    if (argument == "analyze") {
+        if (argc != 3) {
+            std::cerr << "Usage: traceforge analyze FILE\n";
+            return 2;
+        }
+        return run_analyze(argv[2]);
     }
 
     if (argument == "replay") {

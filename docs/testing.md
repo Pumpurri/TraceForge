@@ -4,6 +4,9 @@ The default suite covers schema validation, Protobuf round trips,
 deterministic generation, bounded queue behavior, concurrent gRPC ingestion,
 producer reconnects, overload rejection, checksummed recording, recovery,
 indexed replay, and process shutdown.
+The analysis suite also verifies rate, inter-arrival jitter, clock-domain
+filtering, sequence gaps, timestamp regressions, fault counts, empty logs, and
+rejection of truncated input.
 
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug \

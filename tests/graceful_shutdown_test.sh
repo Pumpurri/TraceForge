@@ -58,3 +58,5 @@ wait "$TRACEFORGE_PID"
 TRACEFORGE_PID=
 grep -q "collector_shutdown=signal signal=2" "$TRACEFORGE_OUTPUT"
 "$TRACEFORGE_BINARY" inspect "$TRACEFORGE_LOG"
+"$TRACEFORGE_BINARY" analyze "$TRACEFORGE_LOG" |
+    grep -q "status=complete records=0"

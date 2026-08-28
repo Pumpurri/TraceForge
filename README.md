@@ -13,6 +13,8 @@ collector with bounded ingestion, a deterministic multi-sensor workload
 generator, and a Flutter client for reading and streaming real phone motion and
 location sensors. Accepted events can be persisted in a versioned, checksummed
 append-only log with interrupted-tail recovery and indexed deterministic replay.
+The `analyze` command turns a validated recording into per-producer integrity
+and per-sensor timing diagnostics without exposing payload values.
 
 The physical path has been validated on an iPhone 16 Pro Max: an 80.5-second
 Wi-Fi session delivered 8,114 accelerometer, gyroscope, and GPS events to the
@@ -28,6 +30,8 @@ stable hash.
 - Versioned, CRC32C-protected append-only recording.
 - Recovery of every complete record after an interrupted final write.
 - Indexed seeking and deterministic replay with a stable content hash.
+- Per-stream rate, jitter, timestamp-regression, sequence-gap, and clock-delta
+  analysis.
 - Malformed-input, concurrency, and recovery coverage under fuzzers and
   sanitizers.
 - Reproducible latency, throughput, memory, and before/after optimization data.
@@ -50,6 +54,7 @@ flowchart LR
     subgraph recording["Resilient recording"]
         log["CRC32C append-only .tflog"]
         recovery["Inspect and tail recovery"]
+        analyze["Rate, jitter, gap, and clock analysis"]
     end
 
     subgraph playback["Deterministic replay"]
@@ -63,6 +68,7 @@ flowchart LR
     queue --> worker
     worker -->|"Serialized records"| log
     log --> recovery
+    log --> analyze
     log --> index
     index --> replay
 ```
@@ -215,6 +221,31 @@ records:
 Recovery refuses completed-record corruption; it never silently truncates past
 a checksum error. The complete byte layout and durability semantics are in
 [`docs/recording-format.md`](docs/recording-format.md).
+
+### Session analysis
+
+Summarize a completed recording without printing sensor payload values:
+
+```sh
+./build/traceforge analyze session.tflog
+```
+
+The command reports duration, producer sequence gaps, non-increasing sequence
+numbers, per-stream observed rate, median inter-arrival time, p95 jitter, source
+timestamp regressions, fault severity counts, and UTC arrival-delta quantiles.
+For example:
+
+```text
+path=session.tflog status=complete records=2369 file_bytes=239171 duration_s=23.399
+producer=demo-iphone records=2369 sequence_gaps=0 non_increasing_sequences=0
+stream=demo-iphone/accelerometer records=1177 rate_hz=50.258 interarrival_p50_ms=19.898 jitter_p95_ms=12.776 source_timestamp_regressions=0
+stream=demo-iphone/gyroscope records=1176 rate_hz=50.293 interarrival_p50_ms=19.881 jitter_p95_ms=15.153 source_timestamp_regressions=0
+```
+
+UTC arrival delta means `collector arrival - source timestamp`; it includes
+device/collector clock offset and sensor batching, so it must not be described
+as pure network latency. Exact metric definitions and edge cases are in
+[`docs/analysis.md`](docs/analysis.md).
 
 ### Indexed deterministic replay
 

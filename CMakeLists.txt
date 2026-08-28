@@ -131,6 +131,7 @@ target_link_libraries(
 
 add_library(
     traceforge_core
+    src/analysis/analyzer.cpp
     src/about.cpp
     src/generator/workload_generator.cpp
     src/generator/workload_publisher.cpp
@@ -301,6 +302,17 @@ if(BUILD_TESTING)
     add_test(
         NAME traceforge.replay
         COMMAND traceforge_replay_test
+    )
+
+    add_executable(
+        traceforge_analysis_test
+        tests/analysis_test.cpp
+    )
+    target_link_libraries(traceforge_analysis_test PRIVATE traceforge::core)
+    traceforge_enable_warnings(traceforge_analysis_test)
+    add_test(
+        NAME traceforge.analysis
+        COMMAND traceforge_analysis_test
     )
 
     add_executable(

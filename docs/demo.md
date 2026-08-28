@@ -5,7 +5,8 @@ reader to inspect the implementation:
 
 ```text
 physical iPhone sensors -> Protobuf -> gRPC over Wi-Fi -> C++ bounded queue
--> checksummed recording -> validation, recovery, and deterministic replay
+-> checksummed recording -> analysis, validation, recovery, and deterministic
+replay
 ```
 
 It is designed as a 90-second screen recording, but the commands also serve as
@@ -18,6 +19,8 @@ a reproducible manual acceptance test.
 - The asynchronous collector accepts the stream through its bounded queue and
   returns an exact accepted-event and sequence-gap summary.
 - The finalized recording is structurally valid, checksum-valid, and readable.
+- Per-stream rates, jitter, gaps, and timestamp anomalies can be measured
+  without printing private payload values.
 - Replay produces the same record count and stable hash at different speeds.
 - An incomplete final record can be detected and removed without hiding
   corruption in any completed record.
@@ -74,6 +77,7 @@ stream, allowing the collector to drain and flush its queue.
 
 ```sh
 ./build/traceforge inspect physical-session.tflog
+./build/traceforge analyze physical-session.tflog
 ./build/traceforge replay physical-session.tflog
 ./build/traceforge replay physical-session.tflog --speed 1000
 ```
@@ -113,6 +117,11 @@ Collector accepted 8114 events; 0 sequence gaps
 collector_shutdown=signal signal=2 accepted=8114 rejected=0 consumed=8114 queue_high_watermark=21 consumer_failures=0
 
 path=physical-session.tflog status=complete records=8114 file_bytes=819416 valid_bytes=819416
+path=physical-session.tflog status=complete records=8114 file_bytes=819416 duration_s=80.475
+producer=demo-iphone records=8114 sequence_gaps=0 non_increasing_sequences=0
+stream=demo-iphone/accelerometer records=4054 rate_hz=50.363 interarrival_p50_ms=19.609 jitter_p95_ms=19.605 source_timestamp_regressions=0
+stream=demo-iphone/gps records=7 rate_hz=0.124 interarrival_p50_ms=18.497 jitter_p95_ms=18980.009 source_timestamp_regressions=1
+stream=demo-iphone/gyroscope records=4053 rate_hz=50.351 interarrival_p50_ms=19.597 jitter_p95_ms=19.593 source_timestamp_regressions=0
 path=physical-session.tflog status=complete indexed=8114 replayed=8114 speed=0 hash=ac5b42e5a8547b48
 path=physical-session.tflog status=complete indexed=8114 replayed=8114 speed=1000 hash=ac5b42e5a8547b48
 ```
@@ -135,8 +144,9 @@ path=interrupted-copy.tflog status=complete records=8113 file_bytes=819315 valid
    change; briefly show the sample rates. Keep GPS coordinates cropped out.
 4. **0:45-0:55 — Close the stream.** Tap **Stop** and show the accepted-event and
    zero-gap acknowledgement, then stop the collector to display its counters.
-5. **0:55-1:10 — Validate and replay.** Run `inspect`, immediate replay, and
-   1000x replay; point out the identical count and hash.
+5. **0:55-1:10 — Analyze and replay.** Run `inspect` and `analyze`; point out
+   the zero gaps, measured IMU rates, and detected GPS timestamp regression.
+   Run immediate and 1000x replay and show the identical count and hash.
 6. **1:10-1:25 — Recover.** Truncate a copy, show explicit tail detection, run
    `recover`, and re-inspect the verified prefix.
 7. **1:25-1:30 — Close.** Show the measured benchmark line and link to the
