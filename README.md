@@ -12,20 +12,101 @@ integration, a versioned Protobuf telemetry contract, an asynchronous C++ gRPC
 collector with bounded ingestion, a deterministic multi-sensor workload
 generator, and a Flutter client for reading and streaming real phone motion and
 location sensors. Accepted events can be persisted in a versioned, checksummed
-append-only log with interrupted-tail recovery. Physical-device results will be
-documented only after the client is run on hardware.
+append-only log with interrupted-tail recovery and indexed deterministic replay.
 
-## Planned capabilities
+The physical path has been validated on an iPhone 16 Pro Max: an 80.5-second
+Wi-Fi session delivered 8,114 accelerometer, gyroscope, and GPS events to the
+C++ collector with zero rejected events or sequence gaps. The finalized log
+passed CRC and Protobuf validation and replayed all 8,114 records with the same
+stable hash.
 
-- Stream real accelerometer, gyroscope, and GPS data from a phone.
-- Ingest multiple concurrent producers through an asynchronous C++ service.
-- Apply bounded buffering and explicit backpressure behavior.
-- Persist events in a versioned, checksummed append-only format.
-- Recover complete records after an interrupted write.
-- Seek and deterministically replay synchronized telemetry.
-- Test malformed inputs, concurrency, and failure recovery with fuzzers and
+## Highlights
+
+- Real accelerometer, gyroscope, and GPS streaming from a physical phone.
+- Concurrent producer ingestion through an asynchronous C++ gRPC service.
+- Bounded buffering with explicit overload and backpressure behavior.
+- Versioned, CRC32C-protected append-only recording.
+- Recovery of every complete record after an interrupted final write.
+- Indexed seeking and deterministic replay with a stable content hash.
+- Malformed-input, concurrency, and recovery coverage under fuzzers and
   sanitizers.
-- Publish reproducible latency, throughput, and memory benchmarks.
+- Reproducible latency, throughput, memory, and before/after optimization data.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    subgraph producers["Telemetry producers"]
+        phone["Physical iPhone IMU and GPS"]
+        synthetic["Deterministic C++ sensor generator"]
+    end
+
+    subgraph ingestion["C++20 ingestion"]
+        collector["Async gRPC collector and validation"]
+        queue["Bounded FIFO and explicit backpressure"]
+        worker["Dedicated consumer thread"]
+    end
+
+    subgraph recording["Resilient recording"]
+        log["CRC32C append-only .tflog"]
+        recovery["Inspect and tail recovery"]
+    end
+
+    subgraph playback["Deterministic replay"]
+        index["Collector-time offset index"]
+        replay["Seek, pace, and stable hash"]
+    end
+
+    phone -->|"Protobuf over gRPC"| collector
+    synthetic -->|"Seven concurrent streams"| collector
+    collector -->|"Validated events"| queue
+    queue --> worker
+    worker -->|"Serialized records"| log
+    log --> recovery
+    log --> index
+    index --> replay
+```
+
+The callback path validates and enqueues; it never performs disk work. The
+fixed-capacity queue prevents unbounded memory growth and rejects an overloaded
+stream explicitly. A dedicated worker owns append-only recording, while replay
+indexes compact metadata and reads payloads by file offset. Collector-arrival
+timestamps define cross-producer ordering because phone and collector source
+clocks are intentionally treated as separate domains.
+
+## Verified physical run
+
+The following result was captured on August 27, 2026 using an iPhone 16 Pro Max
+on the same Wi-Fi LAN as the collector. Payload values such as GPS coordinates
+are intentionally omitted.
+
+| Measurement | Result |
+| --- | ---: |
+| Capture duration | 80.5 seconds |
+| Accelerometer | 4,054 samples at 50.2 Hz observed |
+| Gyroscope | 4,053 samples at 50.2 Hz observed |
+| GPS | 7 samples |
+| Collector accepted / rejected | 8,114 / 0 events |
+| Sequence gaps | 0 |
+| Queue high-water mark | 21 events |
+| Consumer failures | 0 |
+| Final recording | 8,114 records, 819,416 bytes |
+| Immediate and 1000x replay | 8,114 / 8,114 records |
+| Stable replay hash | `ac5b42e5a8547b48` |
+
+Selected privacy-safe fields from the CLI output:
+
+```text
+collector_shutdown=signal signal=2 accepted=8114 rejected=0 consumed=8114 queue_high_watermark=21 consumer_failures=0
+path=physical-session.tflog status=complete records=8114 file_bytes=819416 valid_bytes=819416
+path=physical-session.tflog status=complete indexed=8114 replayed=8114 speed=0 hash=ac5b42e5a8547b48
+```
+
+One GPS source timestamp was observed as non-monotonic. TraceForge preserves
+that source data but does not use it for cross-device ordering; the replay
+contract uses the collector's single clock domain and append index instead.
+See [`docs/demo.md`](docs/demo.md) for the complete commands, recovery example,
+expected output, and a concise recording script.
 
 ## Build
 
@@ -55,7 +136,7 @@ cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 ```
 
-Run the initial CLI:
+Run the CLI:
 
 ```sh
 ./build/traceforge --help
@@ -224,7 +305,9 @@ flutter run
 To stream from a physical phone, pass the collector Mac's LAN address through
 `--dart-define=TRACEFORGE_COLLECTOR_HOST=...`; `127.0.0.1` is only the default
 for a simulator running on the same Mac. See the client README for the complete
-command and platform permissions.
+command and platform permissions. The phone and collector must share a LAN that
+allows device-to-device traffic; managed guest networks commonly isolate
+clients even when they show the same Wi-Fi name.
 
 ## Design direction
 
@@ -254,3 +337,19 @@ UndefinedBehaviorSanitizer, and ThreadSanitizer, plus a Clang libFuzzer target
 that tests both arbitrary bytes and structured mutations of valid recordings.
 The exact local and CI commands, instrumentation boundary, and documented gRPC
 TSan exclusion are in [`docs/testing.md`](docs/testing.md).
+
+## Limitations and next extension
+
+- Development transport is insecure local-network gRPC, not an internet-facing
+  service.
+- The physical result is one device/session, while throughput benchmarks use a
+  controlled loopback workload for reproducibility.
+- Queue latency is measured inside the collector. It is not phone-to-collector
+  latency because source and collector clocks are not synchronized.
+- Full-resolution camera frames, production authentication, distributed
+  storage, and autonomous-driving algorithms are deliberately outside scope.
+
+The next technically meaningful extension is explicit phone-to-collector clock
+offset estimation with uncertainty bounds. That would permit honest network
+latency and cross-device timing analysis without weakening the current clock-
+domain model.

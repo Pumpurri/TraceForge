@@ -28,7 +28,7 @@ use the Mac's LAN address:
 
 ```sh
 flutter run \
-  --dart-define=TRACEFORGE_COLLECTOR_HOST=192.168.1.10 \
+  --dart-define=TRACEFORGE_COLLECTOR_HOST=MAC_LAN_IP \
   --dart-define=TRACEFORGE_COLLECTOR_PORT=50051 \
   --dart-define=TRACEFORGE_PRODUCER_ID=sebastians-iphone
 ```
@@ -89,5 +89,8 @@ flutter test
 Unit tests use an injected telemetry source so controller behavior can be tested
 without pretending that simulated events validate physical hardware. They also
 verify sensor-to-Protobuf encoding and publisher lifecycle behavior. Real sensor
-sampling rates and the complete phone-to-C++ path must still be measured on a
-physical phone.
+sampling rates and the complete phone-to-C++ path were subsequently verified on
+an iPhone 16 Pro Max: the collector accepted 8,114 accelerometer, gyroscope, and
+GPS events with zero sequence gaps. See
+[`../../docs/demo.md`](../../docs/demo.md) for the privacy-safe result, exact
+commands, recording validation, and deterministic replay output.
