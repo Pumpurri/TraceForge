@@ -23,7 +23,7 @@ jobs:
           - name: TSan core concurrency
             cmake_flags: -DTRACEFORGE_ENABLE_TSAN=ON
             exclude_regex: >-
-              traceforge\.(collector_integration|workload_publisher_integration)
+              traceforge\.(collector_integration|workload_publisher_integration|graceful_shutdown)
             runtime: TSAN_OPTIONS=halt_on_error=1
 
     steps:

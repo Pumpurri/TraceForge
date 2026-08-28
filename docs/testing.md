@@ -43,15 +43,16 @@ cmake --build build-tsan --parallel
 TSAN_OPTIONS=halt_on_error=1 ctest --test-dir build-tsan \
   --output-on-failure \
   --exclude-regex \
-  'traceforge\.(collector_integration|workload_publisher_integration)'
+  'traceforge\.(collector_integration|workload_publisher_integration|graceful_shutdown)'
 ```
 
 The TSan job exercises TraceForge's bounded queue, queue consumer, recorder,
-replay engine, and graceful shutdown. The two callback-heavy network tests are
-excluded from TSan because distro and Homebrew gRPC libraries are prebuilt
-without TSan instrumentation and report inside gRPC callback internals. Those
-tests still run in the complete default and ASan+UBSan suites. No global race
-suppression is used.
+replay engine, analysis, validation, and recording format. The two callback-
+heavy network tests and the gRPC process shutdown test are excluded from TSan
+because distro and Homebrew gRPC/Abseil libraries are prebuilt without TSan
+instrumentation and report inside dependency-owned callback and timer threads.
+Those tests still run in the complete default and ASan+UBSan suites. No global
+race suppression is used.
 
 ## Recording parser fuzzer
 
