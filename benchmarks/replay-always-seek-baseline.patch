@@ -1,0 +1,37 @@
+diff --git a/src/replay/replay.cpp b/src/replay/replay.cpp
+index 4645434..d4cc849 100644
+--- a/src/replay/replay.cpp
++++ b/src/replay/replay.cpp
+@@ -41,12 +41,6 @@ void hash_little_endian(std::uint64_t& hash, Integer value) noexcept {
+                                 const recording::LogIndexEntry& entry,
+-                                bool sequential_record,
+                                 std::vector<std::uint8_t>& payload) {
+     input.clear();
+-    if (sequential_record) {
+-        input.ignore(static_cast<std::streamsize>(
+-            recording::kRecordHeaderSize));
+-    } else {
+-        input.seekg(static_cast<std::streamoff>(
+-            entry.file_offset + recording::kRecordHeaderSize));
+-    }
++    input.seekg(static_cast<std::streamoff>(
++        entry.file_offset + recording::kRecordHeaderSize));
+     if (!input) {
+@@ -137,3 +131,2 @@ ReplayResult ReplayEngine::replay(ReplayOptions options,
+     std::optional<std::chrono::steady_clock::time_point> wall_origin;
+-    std::optional<std::uint64_t> next_physical_offset;
+     std::vector<std::uint8_t> payload;
+@@ -145,6 +138,3 @@ ReplayResult ReplayEngine::replay(ReplayOptions options,
+         }
+-        const bool sequential_record =
+-            next_physical_offset.has_value() &&
+-            *next_physical_offset == current->file_offset;
+-        if (!read_payload(input, *current, sequential_record, payload)) {
++        if (!read_payload(input, *current, payload)) {
+             result.status = ReplayStatus::io_error;
+@@ -153,5 +143,2 @@ ReplayResult ReplayEngine::replay(ReplayOptions options,
+         }
+-        next_physical_offset = current->file_offset +
+-                               recording::kRecordHeaderSize +
+-                               current->payload_size;
+         if (recording::crc32c(payload) != current->payload_crc32c) {

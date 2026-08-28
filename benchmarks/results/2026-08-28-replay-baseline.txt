@@ -1,0 +1,24 @@
+TraceForge replay benchmark - unconditional seek baseline
+Source commit: 20291373ded8f355a3ab4e45da8ee022e2db7705
+Source difference: benchmarks/replay-always-seek-baseline.patch applied
+Command: ./build/traceforge_benchmark --events 250000 --producers 7 --queue-capacity 65536
+
+RUN 1
+benchmark=loopback_ingestion events=250000 producers=7 queue_capacity=65536 wall_ms=2722.55 events_per_sec=91825.81 queue_latency_p50_us=14.00 queue_latency_p95_us=68.00 queue_latency_p99_us=182.00 cpu_seconds=15.89 cpu_utilization_percent=583.81 queue_high_watermark=194 rejected=0 peak_rss_mib=80.69
+benchmark=indexed_replay records=250000 file_mib=19.81 index_ms=158.09 index_records_per_sec=1581389.79 index_cpu_seconds=0.16 replay_ms=515.59 replay_records_per_sec=484878.81 replay_cpu_seconds=0.51 hash=d6977ce5f0c788d2 peak_rss_mib=97.66
+
+RUN 2
+benchmark=loopback_ingestion events=250000 producers=7 queue_capacity=65536 wall_ms=2426.02 events_per_sec=103049.28 queue_latency_p50_us=12.00 queue_latency_p95_us=38.00 queue_latency_p99_us=62.00 cpu_seconds=16.45 cpu_utilization_percent=678.27 queue_high_watermark=29 rejected=0 peak_rss_mib=80.28
+benchmark=indexed_replay records=250000 file_mib=19.81 index_ms=156.62 index_records_per_sec=1596253.70 index_cpu_seconds=0.16 replay_ms=520.72 replay_records_per_sec=480101.05 replay_cpu_seconds=0.51 hash=d6977ce5f0c788d2 peak_rss_mib=97.22
+
+RUN 3
+benchmark=loopback_ingestion events=250000 producers=7 queue_capacity=65536 wall_ms=2317.86 events_per_sec=107858.11 queue_latency_p50_us=11.00 queue_latency_p95_us=34.00 queue_latency_p99_us=51.00 cpu_seconds=16.44 cpu_utilization_percent=709.25 queue_high_watermark=29 rejected=0 peak_rss_mib=80.41
+benchmark=indexed_replay records=250000 file_mib=19.81 index_ms=157.58 index_records_per_sec=1586540.22 index_cpu_seconds=0.16 replay_ms=511.98 replay_records_per_sec=488302.11 replay_cpu_seconds=0.51 hash=d6977ce5f0c788d2 peak_rss_mib=97.36
+
+RUN 4
+benchmark=loopback_ingestion events=250000 producers=7 queue_capacity=65536 wall_ms=2353.35 events_per_sec=106231.39 queue_latency_p50_us=12.00 queue_latency_p95_us=40.00 queue_latency_p99_us=71.00 cpu_seconds=16.18 cpu_utilization_percent=687.65 queue_high_watermark=70 rejected=0 peak_rss_mib=80.30
+benchmark=indexed_replay records=250000 file_mib=19.81 index_ms=225.37 index_records_per_sec=1109273.62 index_cpu_seconds=0.18 replay_ms=577.54 replay_records_per_sec=432868.33 replay_cpu_seconds=0.55 hash=d6977ce5f0c788d2 peak_rss_mib=97.27
+
+RUN 5
+benchmark=loopback_ingestion events=250000 producers=7 queue_capacity=65536 wall_ms=2418.47 events_per_sec=103371.11 queue_latency_p50_us=12.00 queue_latency_p95_us=40.00 queue_latency_p99_us=73.00 cpu_seconds=15.93 cpu_utilization_percent=658.59 queue_high_watermark=198 rejected=0 peak_rss_mib=78.67
+benchmark=indexed_replay records=250000 file_mib=19.81 index_ms=171.93 index_records_per_sec=1454117.51 index_cpu_seconds=0.16 replay_ms=527.91 replay_records_per_sec=473564.82 replay_cpu_seconds=0.52 hash=d6977ce5f0c788d2 peak_rss_mib=95.59

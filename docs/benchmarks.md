@@ -83,6 +83,30 @@ same deterministic hash, `d6977ce5f0c788d2`.
 The median improved from 487,712 to 1,684,174 records/s: a 3.45x speedup on this
 workload. This optimization changes neither file format nor replay ordering.
 
+### Independent before/after reproduction
+
+The comparison was repeated on August 28, 2026 from source commit
+`20291373ded8f355a3ab4e45da8ee022e2db7705`. Two detached worktrees used the
+same compiler, Release configuration, benchmark, and command. The baseline
+worktree applied only
+[`benchmarks/replay-always-seek-baseline.patch`](../benchmarks/replay-always-seek-baseline.patch),
+which restores an unconditional `seekg` for each record. Five runs of each
+variant were interleaved to reduce ordering bias.
+
+| Variant | Median replay rate | Five-run range |
+| --- | ---: | ---: |
+| Unconditional-seek baseline | 480,101 records/s | 432,868-488,302 |
+| Sequential-read optimization | 1,685,066 records/s | 1,601,724-1,721,612 |
+
+The reproduced median speedup is **3.51x**. All ten runs replayed 250,000
+records and produced the same hash, `d6977ce5f0c788d2`. The complete
+machine-readable outputs are preserved for the
+[`baseline`](../benchmarks/results/2026-08-28-replay-baseline.txt) and
+[`optimized`](../benchmarks/results/2026-08-28-replay-optimized.txt) variants.
+Together with the original 3.45x measurement, the repeated comparison supports
+the conservative claim that the fast path improved this workload by about
+3.5x.
+
 ## Interpreting the numbers
 
 These measurements characterize one laptop, build, dependency set, payload,

@@ -377,8 +377,10 @@ On a 12-core Apple M4 Pro, the reproducible 250,000-event Release benchmark
 measured five-run medians of 103,715 events/s through the complete loopback gRPC
 ingestion path, 12/43/81 µs p50/p95/p99 collector-queue latency, and 1,684,174
 records/s for immediate replay, with zero rejected events. A profile-guided
-sequential-read fast path improved replay throughput by 3.45x while preserving
-the replay hash and out-of-order fallback.
+sequential-read fast path improved replay throughput by approximately 3.5x in
+two five-run comparisons while preserving the replay hash and out-of-order
+fallback. The independently reproduced comparison and raw outputs are included
+in the repository.
 
 The exact hardware, commands, raw metric definitions, observed ranges,
 resource measurements, limitations, and before/after comparison are in
